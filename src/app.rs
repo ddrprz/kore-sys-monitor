@@ -252,3 +252,43 @@ impl App {
         self.status_message = Some((msg, std::time::Instant::now()));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tab_navigation() {
+        let mut app = App::new();
+        assert_eq!(app.active_tab, Tab::Overview);
+        app.next_tab();
+        assert_eq!(app.active_tab, Tab::Processes);
+        app.next_tab();
+        assert_eq!(app.active_tab, Tab::StorageNet);
+        app.next_tab();
+        assert_eq!(app.active_tab, Tab::CpuDetail);
+        app.next_tab();
+        assert_eq!(app.active_tab, Tab::Overview);
+        app.previous_tab();
+        assert_eq!(app.active_tab, Tab::CpuDetail);
+    }
+
+    #[test]
+    fn test_theme_cycling() {
+        let mut app = App::new();
+        let initial = app.theme.variant;
+        app.cycle_theme();
+        assert_ne!(app.theme.variant, initial);
+    }
+
+    #[test]
+    fn test_sort_cycling() {
+        let mut app = App::new();
+        assert_eq!(app.sort_column, SortColumn::Cpu);
+        app.cycle_sort();
+        assert_eq!(app.sort_column, SortColumn::Memory);
+        app.reverse_sort();
+        assert_eq!(app.sort_order, SortOrder::Ascending);
+    }
+}
+
