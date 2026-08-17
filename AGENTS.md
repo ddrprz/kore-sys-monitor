@@ -63,3 +63,9 @@ Al editar o extender este código, los asistentes de IA deben seguir estrictamen
 
 5. **Manejo de Errores Robustos**:
    - Evitar `.unwrap()` o `.expect()` innecesarios en tiempo de ejecución. Retornar `Result<T, E>` y manejar fallos grácilmente.
+
+6. **Flujo de Trabajo Git (GitHub Flow)**:
+   - Toda nueva funcionalidad o corrección se desarrollará en una rama descriptiva basada en `main` (ej. `feature/mvp-core-system`, `feature/process-manager`).
+   - Mantener commits pequeños, atómicos y con mensajes claros en formato Conventional Commits (`feat: ...`, `fix: ...`, `docs: ...`).
+   - La rama `main` debe mantenerse siempre estable y compilable.
+
