@@ -1,7 +1,9 @@
 mod app;
 mod event;
 mod system;
+mod theme;
 mod ui;
+
 
 use app::App;
 use crossterm::{

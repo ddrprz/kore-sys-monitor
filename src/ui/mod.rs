@@ -9,7 +9,7 @@ pub mod storage;
 use crate::app::{App, InputMode, Tab};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph, Tabs},
     Frame,
@@ -17,6 +17,9 @@ use ratatui::{
 
 pub fn render(app: &App, frame: &mut Frame) {
     let size = frame.area();
+    let theme = &app.theme;
+
+    let is_small = size.width < 80 || size.height < 24;
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -31,12 +34,12 @@ pub fn render(app: &App, frame: &mut Frame) {
     // 1. Render Header
     header::render(app, frame, chunks[0]);
 
-    // 2. Render Tabs
+    // 2. Render Tabs (Compact for small screens)
     let tab_titles = vec![
-        Tab::Overview.title(),
-        Tab::Processes.title(),
-        Tab::StorageNet.title(),
-        Tab::CpuDetail.title(),
+        if is_small { Tab::Overview.compact_title() } else { Tab::Overview.title() },
+        if is_small { Tab::Processes.compact_title() } else { Tab::Processes.title() },
+        if is_small { Tab::StorageNet.compact_title() } else { Tab::StorageNet.title() },
+        if is_small { Tab::CpuDetail.compact_title() } else { Tab::CpuDetail.title() },
     ];
 
     let tabs = Tabs::new(tab_titles)
@@ -44,19 +47,19 @@ pub fn render(app: &App, frame: &mut Frame) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(Color::DarkGray)),
+                .border_style(Style::default().fg(theme.border_inactive)),
         )
         .select(app.active_tab as usize)
-        .style(Style::default().fg(Color::DarkGray))
+        .style(Style::default().fg(theme.text_muted))
         .highlight_style(
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.primary)
                 .add_modifier(Modifier::BOLD),
         );
 
     frame.render_widget(tabs, chunks[1]);
 
-    // 3. Render Main View according to Active Tab
+    // 3. Render Main View according to Active Tab & Breakpoints
     match app.active_tab {
         Tab::Overview => render_overview(app, frame, chunks[2]),
         Tab::Processes => processes::render(app, frame, chunks[2]),
@@ -71,29 +74,57 @@ pub fn render(app: &App, frame: &mut Frame) {
     if app.input_mode == InputMode::KillModal {
         modals::render_kill_modal(app, frame, size);
     } else if app.input_mode == InputMode::HelpModal {
-        modals::render_help_modal(frame, size);
+        modals::render_help_modal(app, frame, size);
     }
 }
 
 fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
-    let main_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(10), Constraint::Min(8)])
-        .split(area);
+    let is_ultrawide = area.width > 120 && area.height > 35;
 
-    let top_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(main_chunks[0]);
+    if is_ultrawide {
+        // Ultra-wide 3-column layout: CPU (Left) | Memory & Net (Center) | Disks & Processes (Right)
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(30),
+                Constraint::Percentage(35),
+                Constraint::Percentage(35),
+            ])
+            .split(area);
 
-    // Top Left: CPU
-    cpu::render(app, frame, top_chunks[0]);
+        cpu::render(app, frame, cols[0]);
 
-    // Top Right: Memory
-    memory::render(app, frame, top_chunks[1]);
+        let center_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(8), Constraint::Min(10)])
+            .split(cols[1]);
 
-    // Bottom: Top Processes Table
-    processes::render(app, frame, main_chunks[1]);
+        memory::render(app, frame, center_chunks[0]);
+        network::render(app, frame, center_chunks[1]);
+
+        let right_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+            .split(cols[2]);
+
+        storage::render(app, frame, right_chunks[0]);
+        processes::render(app, frame, right_chunks[1]);
+    } else {
+        // Standard 2-row layout
+        let main_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(10), Constraint::Min(8)])
+            .split(area);
+
+        let top_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(main_chunks[0]);
+
+        cpu::render(app, frame, top_chunks[0]);
+        memory::render(app, frame, top_chunks[1]);
+        processes::render(app, frame, main_chunks[1]);
+    }
 }
 
 fn render_storage_net(app: &App, frame: &mut Frame, area: Rect) {
@@ -107,26 +138,43 @@ fn render_storage_net(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
+
     let footer_text = if let Some((msg, _)) = &app.status_message {
         Line::from(vec![
-            Span::styled(" STATUS: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            Span::styled(msg, Style::default().fg(Color::White)),
+            Span::styled(" STATUS: ", Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
+            Span::styled(msg, Style::default().fg(theme.primary)),
+        ])
+    } else if area.width < 80 {
+        Line::from(vec![
+            Span::styled("[Tab]", Style::default().fg(theme.primary)),
+            Span::raw("Nav │ "),
+            Span::styled("[/]", Style::default().fg(theme.primary)),
+            Span::raw("Search │ "),
+            Span::styled("[t]", Style::default().fg(theme.primary)),
+            Span::raw("Theme │ "),
+            Span::styled("[K]", Style::default().fg(theme.primary)),
+            Span::raw("Kill │ "),
+            Span::styled("[q]", Style::default().fg(theme.primary)),
+            Span::raw("Quit"),
         ])
     } else {
         Line::from(vec![
-            Span::styled(" [Tab]", Style::default().fg(Color::Cyan)),
+            Span::styled(" [Tab]", Style::default().fg(theme.primary)),
             Span::raw(" Vista  │ "),
-            Span::styled("[/]", Style::default().fg(Color::Cyan)),
+            Span::styled("[/]", Style::default().fg(theme.primary)),
             Span::raw(" Buscar  │ "),
-            Span::styled("[s]", Style::default().fg(Color::Cyan)),
+            Span::styled("[s]", Style::default().fg(theme.primary)),
             Span::raw(" Ordenar  │ "),
-            Span::styled("[r]", Style::default().fg(Color::Cyan)),
+            Span::styled("[r]", Style::default().fg(theme.primary)),
             Span::raw(" Invertir  │ "),
-            Span::styled("[K]", Style::default().fg(Color::Cyan)),
+            Span::styled("[t]", Style::default().fg(theme.primary)),
+            Span::raw(" Tema  │ "),
+            Span::styled("[K]", Style::default().fg(theme.primary)),
             Span::raw(" Matar Proceso  │ "),
-            Span::styled("[?]", Style::default().fg(Color::Cyan)),
+            Span::styled("[?]", Style::default().fg(theme.primary)),
             Span::raw(" Ayuda  │ "),
-            Span::styled("[q]", Style::default().fg(Color::Cyan)),
+            Span::styled("[q]", Style::default().fg(theme.primary)),
             Span::raw(" Salir"),
         ])
     };

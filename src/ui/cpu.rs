@@ -8,6 +8,8 @@ use ratatui::{
 };
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(5), Constraint::Min(0)])
@@ -22,9 +24,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .unwrap_or(0);
 
     let color = match global_val {
-        0..=59 => Color::Green,
-        60..=84 => Color::Yellow,
-        _ => Color::Red,
+        0..=59 => theme.success,
+        60..=84 => theme.warning,
+        _ => theme.critical,
     };
 
     let sparkline_data: Vec<u64> = app.metrics.global_cpu_history.iter().copied().collect();
@@ -36,7 +38,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(theme.border_inactive));
 
     let sparkline = Sparkline::default()
         .block(global_block)
@@ -59,19 +61,15 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         };
 
         let core_rows = (num_cores + cols - 1) / cols;
-        let mut constraints = Vec::new();
-        for _ in 0..core_rows {
-            constraints.push(Constraint::Length(1));
-        }
 
         let per_core_block = Block::default()
             .title(Span::styled(
                 format!(" Per-Core Load ({} Cores) ", num_cores),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
             ))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(Color::DarkGray));
+            .border_style(Style::default().fg(theme.border_inactive));
 
         let inner_area = per_core_block.inner(chunks[1]);
         frame.render_widget(per_core_block, chunks[1]);
@@ -93,9 +91,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 
             if row_idx < row_layout.len() {
                 let core_color = match usage as u64 {
-                    0..=59 => Color::Green,
-                    60..=84 => Color::Yellow,
-                    _ => Color::Red,
+                    0..=59 => theme.success,
+                    60..=84 => theme.warning,
+                    _ => theme.critical,
                 };
 
                 let gauge = Gauge::default()

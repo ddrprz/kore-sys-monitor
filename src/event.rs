@@ -48,7 +48,9 @@ pub fn handle_events(app: &mut App, tick_rate: Duration) -> Result<()> {
                     }
                     (KeyCode::Char('s'), _) => app.cycle_sort(),
                     (KeyCode::Char('r'), _) => app.reverse_sort(),
+                    (KeyCode::Char('t'), _) => app.cycle_theme(),
                     (KeyCode::Char('K'), _) | (KeyCode::Delete, _) => app.open_kill_modal(),
+
                     (KeyCode::Char('?'), _) => app.input_mode = InputMode::HelpModal,
                     (KeyCode::Esc, _) => {
                         if !app.search_query.is_empty() {

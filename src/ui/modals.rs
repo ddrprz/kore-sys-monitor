@@ -1,7 +1,7 @@
 use crate::app::App;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
     Frame,
@@ -28,6 +28,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 }
 
 pub fn render_kill_modal(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
     if let Some(proc) = &app.selected_kill_process {
         let popup_area = centered_rect(50, 30, area);
 
@@ -35,36 +36,36 @@ pub fn render_kill_modal(app: &App, frame: &mut Frame, area: Rect) {
             Line::from(""),
             Line::from(vec![Span::styled(
                 " ¿Seguro que deseas terminar este proceso? ",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.critical).add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
             Line::from(vec![
                 Span::raw("  PID:   "),
-                Span::styled(proc.pid.to_string(), Style::default().fg(Color::Yellow)),
+                Span::styled(proc.pid.to_string(), Style::default().fg(theme.warning)),
             ]),
             Line::from(vec![
                 Span::raw("  Name:  "),
-                Span::styled(&proc.name, Style::default().fg(Color::Cyan)),
+                Span::styled(&proc.name, Style::default().fg(theme.primary)),
             ]),
             Line::from(vec![
                 Span::raw("  CPU:   "),
-                Span::styled(format!("{:.1}%", proc.cpu_usage), Style::default().fg(Color::Green)),
+                Span::styled(format!("{:.1}%", proc.cpu_usage), Style::default().fg(theme.success)),
                 Span::raw("   │   MEM: "),
-                Span::styled(format!("{:.1}%", proc.memory_percent), Style::default().fg(Color::Magenta)),
+                Span::styled(format!("{:.1}%", proc.memory_percent), Style::default().fg(theme.secondary)),
             ]),
             Line::from(""),
             Line::from(vec![
-                Span::styled(" [ Y / Enter: Confirmar ] ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+                Span::styled(" [ Y / Enter: Confirmar ] ", Style::default().fg(theme.critical).add_modifier(Modifier::BOLD)),
                 Span::raw("   "),
-                Span::styled(" [ N / Esc: Cancelar ] ", Style::default().fg(Color::DarkGray)),
+                Span::styled(" [ N / Esc: Cancelar ] ", Style::default().fg(theme.text_muted)),
             ]),
         ];
 
         let block = Block::default()
-            .title(Span::styled(" Terminar Proceso ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)))
+            .title(Span::styled(" Terminar Proceso ", Style::default().fg(theme.critical).add_modifier(Modifier::BOLD)))
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Style::default().fg(Color::Red));
+            .border_style(Style::default().fg(theme.critical));
 
         let paragraph = Paragraph::new(text).alignment(Alignment::Center).block(block);
 
@@ -73,32 +74,34 @@ pub fn render_kill_modal(app: &App, frame: &mut Frame, area: Rect) {
     }
 }
 
-pub fn render_help_modal(frame: &mut Frame, area: Rect) {
-    let popup_area = centered_rect(60, 60, area);
+pub fn render_help_modal(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
+    let popup_area = centered_rect(60, 65, area);
 
     let text = vec![
-        Line::from(Span::styled(" Atajos de Teclado ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(" Atajos de Teclado ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))),
         Line::from(""),
-        Line::from(vec![Span::styled(" Tab / Shift+Tab ", Style::default().fg(Color::Yellow)), Span::raw(" Navegar entre pestañas")]),
-        Line::from(vec![Span::styled(" 1, 2, 3, 4      ", Style::default().fg(Color::Yellow)), Span::raw(" Selección directa de pestaña")]),
-        Line::from(vec![Span::styled(" j / k (Down/Up) ", Style::default().fg(Color::Yellow)), Span::raw(" Seleccionar proceso siguiente / anterior")]),
-        Line::from(vec![Span::styled(" PgUp / PgDown   ", Style::default().fg(Color::Yellow)), Span::raw(" Desplazamiento rápido por lista")]),
-        Line::from(vec![Span::styled(" Home / End      ", Style::default().fg(Color::Yellow)), Span::raw(" Ir al inicio / final de la lista")]),
-        Line::from(vec![Span::styled(" /               ", Style::default().fg(Color::Yellow)), Span::raw(" Buscar / Filtrar procesos en tiempo real")]),
-        Line::from(vec![Span::styled(" s               ", Style::default().fg(Color::Yellow)), Span::raw(" Cambiar columna de ordenación (CPU/MEM/PID/Name)")]),
-        Line::from(vec![Span::styled(" r               ", Style::default().fg(Color::Yellow)), Span::raw(" Invertir ordenación (Asc / Desc)")]),
-        Line::from(vec![Span::styled(" K / Delete      ", Style::default().fg(Color::Yellow)), Span::raw(" Ventana modal para terminar proceso seleccionado")]),
-        Line::from(vec![Span::styled(" ?               ", Style::default().fg(Color::Yellow)), Span::raw(" Abrir / Cerrar esta ventana de ayuda")]),
-        Line::from(vec![Span::styled(" q / Ctrl+C      ", Style::default().fg(Color::Yellow)), Span::raw(" Salir de la aplicación limpiando terminal")]),
+        Line::from(vec![Span::styled(" Tab / Shift+Tab ", Style::default().fg(theme.warning)), Span::raw(" Navegar entre pestañas")]),
+        Line::from(vec![Span::styled(" 1, 2, 3, 4      ", Style::default().fg(theme.warning)), Span::raw(" Selección directa de pestaña")]),
+        Line::from(vec![Span::styled(" j / k (Down/Up) ", Style::default().fg(theme.warning)), Span::raw(" Seleccionar proceso siguiente / anterior")]),
+        Line::from(vec![Span::styled(" PgUp / PgDown   ", Style::default().fg(theme.warning)), Span::raw(" Desplazamiento rápido por lista")]),
+        Line::from(vec![Span::styled(" Home / End      ", Style::default().fg(theme.warning)), Span::raw(" Ir al inicio / final de la lista")]),
+        Line::from(vec![Span::styled(" /               ", Style::default().fg(theme.warning)), Span::raw(" Buscar / Filtrar procesos en tiempo real")]),
+        Line::from(vec![Span::styled(" s               ", Style::default().fg(theme.warning)), Span::raw(" Cambiar columna de ordenación (CPU/MEM/PID/Name)")]),
+        Line::from(vec![Span::styled(" r               ", Style::default().fg(theme.warning)), Span::raw(" Invertir ordenación (Asc / Desc)")]),
+        Line::from(vec![Span::styled(" t               ", Style::default().fg(theme.warning)), Span::raw(" Cambiar tema dinámico (Cyber Cyan, Catppuccin, etc.)")]),
+        Line::from(vec![Span::styled(" K / Delete      ", Style::default().fg(theme.warning)), Span::raw(" Ventana modal para terminar proceso seleccionado")]),
+        Line::from(vec![Span::styled(" ?               ", Style::default().fg(theme.warning)), Span::raw(" Abrir / Cerrar esta ventana de ayuda")]),
+        Line::from(vec![Span::styled(" q / Ctrl+C      ", Style::default().fg(theme.warning)), Span::raw(" Salir de la aplicación limpiando terminal")]),
         Line::from(""),
-        Line::from(Span::styled(" Presiona Esc, ? o q para cerrar ", Style::default().fg(Color::DarkGray))),
+        Line::from(Span::styled(" Presiona Esc, ? o q para cerrar ", Style::default().fg(theme.text_muted))),
     ];
 
     let block = Block::default()
-        .title(Span::styled(" Ayuda - kore-sys-monitor ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
+        .title(Span::styled(" Ayuda - kore-sys-monitor ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(theme.primary));
 
     let paragraph = Paragraph::new(text).alignment(Alignment::Center).block(block);
 

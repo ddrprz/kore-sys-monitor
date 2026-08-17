@@ -13,14 +13,16 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
+
     let block = Block::default()
         .title(Span::styled(
             " Memory & Swap ",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(theme.border_inactive));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -42,9 +44,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let ram_pct = ram_ratio * 100.0;
 
     let ram_color = match ram_pct as u64 {
-        0..=59 => Color::Green,
-        60..=84 => Color::Yellow,
-        _ => Color::Red,
+        0..=59 => theme.success,
+        60..=84 => theme.warning,
+        _ => theme.critical,
     };
 
     let ram_label = format!(
@@ -72,9 +74,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let swap_pct = swap_ratio * 100.0;
 
     let swap_color = match swap_pct as u64 {
-        0..=59 => Color::Magenta,
-        60..=84 => Color::Yellow,
-        _ => Color::Red,
+        0..=59 => theme.secondary,
+        60..=84 => theme.warning,
+        _ => theme.critical,
     };
 
     let swap_label = format!(
