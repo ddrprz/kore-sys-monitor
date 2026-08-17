@@ -7,3 +7,11 @@ edition = "2024"
 crossterm = "0.29.0"
 ratatui = "0.30.2"
 sysinfo = "0.33"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
