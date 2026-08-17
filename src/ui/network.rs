@@ -1,7 +1,7 @@
 use crate::app::App;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::Span,
     widgets::{Block, BorderType, Borders, Sparkline},
     Frame,
@@ -20,14 +20,16 @@ fn format_net_bytes(bytes: u64) -> String {
 }
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
+
     let block = Block::default()
         .title(Span::styled(
             " Network Bandwidth ",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(theme.border_inactive));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -50,13 +52,13 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             app.metrics.rx_rate_kbs,
             format_net_bytes(app.metrics.total_rx_bytes)
         ),
-        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        Style::default().fg(theme.success).add_modifier(Modifier::BOLD),
     ));
 
     let rx_sparkline = Sparkline::default()
         .block(rx_block)
         .data(&rx_data)
-        .style(Style::default().fg(Color::Green));
+        .style(Style::default().fg(theme.success));
 
     frame.render_widget(rx_sparkline, chunks[0]);
 
@@ -68,13 +70,13 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             app.metrics.tx_rate_kbs,
             format_net_bytes(app.metrics.total_tx_bytes)
         ),
-        Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+        Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD),
     ));
 
     let tx_sparkline = Sparkline::default()
         .block(tx_block)
         .data(&tx_data)
-        .style(Style::default().fg(Color::Magenta));
+        .style(Style::default().fg(theme.secondary));
 
     frame.render_widget(tx_sparkline, chunks[1]);
 }

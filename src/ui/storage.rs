@@ -1,7 +1,7 @@
 use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::Span,
     widgets::{Block, BorderType, Borders, Cell, Row, Table},
     Frame,
@@ -13,21 +13,23 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
+
     let header_cells = ["Mount", "Type", "Total", "Used", "Free", "Use %"]
         .iter()
-        .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
+        .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
     let header = Row::new(header_cells).height(1);
 
     let rows = app.metrics.disk_list.iter().map(|d| {
         let usage_color = match d.usage_percent as u64 {
-            0..=74 => Color::Green,
-            75..=89 => Color::Yellow,
-            _ => Color::Red,
+            0..=74 => theme.success,
+            75..=89 => theme.warning,
+            _ => theme.critical,
         };
 
         Row::new(vec![
-            Cell::from(d.mount_point.clone()).style(Style::default().fg(Color::White)),
-            Cell::from(d.file_system.clone()).style(Style::default().fg(Color::DarkGray)),
+            Cell::from(d.mount_point.clone()),
+            Cell::from(d.file_system.clone()).style(Style::default().fg(theme.text_muted)),
             Cell::from(format_bytes(d.total_space)),
             Cell::from(format_bytes(d.used_space)),
             Cell::from(format_bytes(d.free_space)),
@@ -51,11 +53,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         Block::default()
             .title(Span::styled(
                 " Disks & Mounts ",
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
             ))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(Color::DarkGray)),
+            .border_style(Style::default().fg(theme.border_inactive)),
     );
 
     frame.render_widget(table, area);

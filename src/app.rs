@@ -1,4 +1,5 @@
 use crate::system::{ProcessInfo, SystemMetrics};
+use crate::theme::{Theme, ThemeVariant};
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Tab {
@@ -25,6 +26,15 @@ impl Tab {
             Tab::Processes => "[2] Processes",
             Tab::StorageNet => "[3] Storage & Net",
             Tab::CpuDetail => "[4] CPU Detail",
+        }
+    }
+
+    pub fn compact_title(&self) -> &'static str {
+        match self {
+            Tab::Overview => "1:Over",
+            Tab::Processes => "2:Proc",
+            Tab::StorageNet => "3:Disk",
+            Tab::CpuDetail => "4:CPU",
         }
     }
 }
@@ -90,6 +100,7 @@ pub struct App {
     pub input_mode: InputMode,
     pub selected_kill_process: Option<ProcessInfo>,
     pub status_message: Option<(String, std::time::Instant)>,
+    pub theme: Theme,
     pub should_quit: bool,
 }
 
@@ -105,9 +116,17 @@ impl App {
             input_mode: InputMode::Normal,
             selected_kill_process: None,
             status_message: None,
+            theme: Theme::from_variant(ThemeVariant::CyberCyan),
             should_quit: false,
         }
     }
+
+    pub fn cycle_theme(&mut self) {
+        let next_var = self.theme.variant.next();
+        self.theme = Theme::from_variant(next_var);
+        self.set_status(format!("Tema cambiado a '{}'", next_var.name()));
+    }
+
 
     pub fn update(&mut self, elapsed_secs: f64) {
         self.metrics.refresh(elapsed_secs);

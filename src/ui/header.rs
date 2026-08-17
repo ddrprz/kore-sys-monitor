@@ -1,7 +1,7 @@
 use crate::app::App;
 use ratatui::{
     layout::Alignment,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
@@ -10,32 +10,49 @@ use ratatui::{
 pub fn render(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
     let uptime_hours = app.metrics.uptime_secs / 3600;
     let uptime_mins = (app.metrics.uptime_secs % 3600) / 60;
+    let theme = &app.theme;
 
-    let header_text = vec![Line::from(vec![
-        Span::styled(
-            " kore-sys-monitor v0.1.0 ",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
-        Span::raw("Host: "),
-        Span::styled(&app.metrics.host_name, Style::default().fg(Color::Green)),
-        Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
-        Span::raw("OS: "),
-        Span::styled(&app.metrics.os_name, Style::default().fg(Color::Yellow)),
-        Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
-        Span::raw("Kernel: "),
-        Span::styled(&app.metrics.kernel_version, Style::default().fg(Color::Cyan)),
-        Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
-        Span::raw("Arch: "),
-        Span::styled(&app.metrics.cpu_arch, Style::default().fg(Color::Blue)),
-        Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
-        Span::raw("Uptime: "),
-        Span::styled(
-            format!("{}h {}m", uptime_hours, uptime_mins),
-            Style::default().fg(Color::Magenta),
-        ),
+    let is_compact = area.width < 80;
 
-    ])];
+    let header_text = if is_compact {
+        vec![Line::from(vec![
+            Span::styled("kore-sys ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+            Span::styled("│ ", Style::default().fg(theme.text_muted)),
+            Span::raw("H: "),
+            Span::styled(&app.metrics.host_name, Style::default().fg(theme.success)),
+            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+            Span::raw("Up: "),
+            Span::styled(format!("{}h{}m", uptime_hours, uptime_mins), Style::default().fg(theme.secondary)),
+        ])]
+    } else {
+        vec![Line::from(vec![
+            Span::styled(
+                " kore-sys-monitor v0.1.0 ",
+                Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+            Span::raw("Host: "),
+            Span::styled(&app.metrics.host_name, Style::default().fg(theme.success)),
+            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+            Span::raw("OS: "),
+            Span::styled(&app.metrics.os_name, Style::default().fg(theme.warning)),
+            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+            Span::raw("Kernel: "),
+            Span::styled(&app.metrics.kernel_version, Style::default().fg(theme.primary)),
+            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+            Span::raw("Arch: "),
+            Span::styled(&app.metrics.cpu_arch, Style::default().fg(theme.secondary)),
+            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+            Span::raw("Uptime: "),
+            Span::styled(
+                format!("{}h {}m", uptime_hours, uptime_mins),
+                Style::default().fg(theme.secondary),
+            ),
+            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+            Span::raw("Theme: "),
+            Span::styled(theme.variant.name(), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+        ])]
+    };
 
     let paragraph = Paragraph::new(header_text)
         .alignment(Alignment::Center)
@@ -43,7 +60,7 @@ pub fn render(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(Color::Cyan)),
+                .border_style(Style::default().fg(theme.border_active)),
         );
 
     frame.render_widget(paragraph, area);
