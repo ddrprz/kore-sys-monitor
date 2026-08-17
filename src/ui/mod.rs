@@ -64,8 +64,9 @@ pub fn render(app: &App, frame: &mut Frame) {
         Tab::Overview => render_overview(app, frame, chunks[2]),
         Tab::Processes => processes::render(app, frame, chunks[2]),
         Tab::StorageNet => render_storage_net(app, frame, chunks[2]),
-        Tab::CpuDetail => cpu::render(app, frame, chunks[2]),
+        Tab::CpuDetail => cpu::render_detail(app, frame, chunks[2]),
     }
+
 
     // 4. Render Footer Navigation Bar / Status Message
     render_footer(app, frame, chunks[3]);
