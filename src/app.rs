@@ -7,15 +7,17 @@ pub enum Tab {
     Processes = 1,
     StorageNet = 2,
     CpuDetail = 3,
+    GpuDetail = 4,
 }
 
 impl Tab {
     pub fn from_index(index: usize) -> Self {
-        match index % 4 {
+        match index % 5 {
             0 => Tab::Overview,
             1 => Tab::Processes,
             2 => Tab::StorageNet,
             3 => Tab::CpuDetail,
+            4 => Tab::GpuDetail,
             _ => Tab::Overview,
         }
     }
@@ -26,6 +28,7 @@ impl Tab {
             Tab::Processes => "[2] Processes",
             Tab::StorageNet => "[3] Storage & Net",
             Tab::CpuDetail => "[4] CPU Detail",
+            Tab::GpuDetail => "[5] GPU Detail",
         }
     }
 
@@ -35,6 +38,7 @@ impl Tab {
             Tab::Processes => "2:Proc",
             Tab::StorageNet => "3:Disk",
             Tab::CpuDetail => "4:CPU",
+            Tab::GpuDetail => "5:GPU",
         }
     }
 }
@@ -192,7 +196,7 @@ impl App {
     }
 
     pub fn previous_tab(&mut self) {
-        let idx = (self.active_tab as usize + 3) % 4;
+        let idx = (self.active_tab as usize + 4) % 5;
         self.active_tab = Tab::from_index(idx);
     }
 
@@ -268,9 +272,11 @@ mod tests {
         app.next_tab();
         assert_eq!(app.active_tab, Tab::CpuDetail);
         app.next_tab();
+        assert_eq!(app.active_tab, Tab::GpuDetail);
+        app.next_tab();
         assert_eq!(app.active_tab, Tab::Overview);
         app.previous_tab();
-        assert_eq!(app.active_tab, Tab::CpuDetail);
+        assert_eq!(app.active_tab, Tab::GpuDetail);
     }
 
     #[test]

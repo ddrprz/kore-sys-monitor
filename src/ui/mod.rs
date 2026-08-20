@@ -1,4 +1,5 @@
 pub mod cpu;
+pub mod gpu;
 pub mod header;
 pub mod memory;
 pub mod modals;
@@ -40,6 +41,7 @@ pub fn render(app: &App, frame: &mut Frame) {
         if is_small { Tab::Processes.compact_title() } else { Tab::Processes.title() },
         if is_small { Tab::StorageNet.compact_title() } else { Tab::StorageNet.title() },
         if is_small { Tab::CpuDetail.compact_title() } else { Tab::CpuDetail.title() },
+        if is_small { Tab::GpuDetail.compact_title() } else { Tab::GpuDetail.title() },
     ];
 
     let tabs = Tabs::new(tab_titles)
@@ -65,6 +67,7 @@ pub fn render(app: &App, frame: &mut Frame) {
         Tab::Processes => processes::render(app, frame, chunks[2]),
         Tab::StorageNet => render_storage_net(app, frame, chunks[2]),
         Tab::CpuDetail => cpu::render_detail(app, frame, chunks[2]),
+        Tab::GpuDetail => gpu::render_detail(app, frame, chunks[2]),
     }
 
 
@@ -83,7 +86,7 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
     let is_ultrawide = area.width > 120 && area.height > 35;
 
     if is_ultrawide {
-        // Ultra-wide 3-column layout: CPU (Left) | Memory & Net (Center) | Disks & Processes (Right)
+        // Ultra-wide 3-column layout: CPU (Left) | Memory, GPU & Net (Center) | Disks & Processes (Right)
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -97,11 +100,12 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
 
         let center_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(8), Constraint::Min(10)])
+            .constraints([Constraint::Length(8), Constraint::Length(6), Constraint::Min(8)])
             .split(cols[1]);
 
         memory::render(app, frame, center_chunks[0]);
-        network::render(app, frame, center_chunks[1]);
+        gpu::render_summary(app, frame, center_chunks[1]);
+        network::render(app, frame, center_chunks[2]);
 
         let right_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -111,7 +115,7 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
         storage::render(app, frame, right_chunks[0]);
         processes::render(app, frame, right_chunks[1]);
     } else {
-        // Standard 2-row layout
+        // Standard 2-row layout with CPU, Memory, GPU top row
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(10), Constraint::Min(8)])
@@ -119,11 +123,16 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
 
         let top_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([
+                Constraint::Percentage(34),
+                Constraint::Percentage(33),
+                Constraint::Percentage(33),
+            ])
             .split(main_chunks[0]);
 
         cpu::render(app, frame, top_chunks[0]);
         memory::render(app, frame, top_chunks[1]);
+        gpu::render_summary(app, frame, top_chunks[2]);
         processes::render(app, frame, main_chunks[1]);
     }
 }
