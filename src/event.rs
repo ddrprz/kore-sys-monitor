@@ -19,13 +19,7 @@ pub fn handle_events(app: &mut App, tick_rate: Duration) -> Result<()> {
                     (KeyCode::Char('3'), _) => app.select_tab(Tab::StorageNet),
                     (KeyCode::Char('4'), _) => app.select_tab(Tab::CpuDetail),
                     (KeyCode::Down, _) | (KeyCode::Char('j'), _) => app.select_next_process(),
-                    (KeyCode::Up, _) | (KeyCode::Char('k'), _) => {
-                        if app.active_tab == Tab::Processes {
-                            app.select_previous_process();
-                        } else {
-                            app.open_kill_modal();
-                        }
-                    }
+                    (KeyCode::Up, _) | (KeyCode::Char('k'), _) => app.select_previous_process(),
                     (KeyCode::PageDown, _) => {
                         for _ in 0..10 {
                             app.select_next_process();
