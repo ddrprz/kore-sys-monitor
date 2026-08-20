@@ -1,5 +1,5 @@
 use crate::app::{App, InputMode, Tab};
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::io::Result;
 use std::time::Duration;
 
@@ -7,6 +7,9 @@ pub fn handle_events(app: &mut App, tick_rate: Duration) -> Result<()> {
 
     if event::poll(tick_rate)? {
         if let Event::Key(key) = event::read()? {
+            if key.kind == KeyEventKind::Release {
+                return Ok(());
+            }
             match app.input_mode {
                 InputMode::Normal => match (key.code, key.modifiers) {
                     (KeyCode::Char('c'), KeyModifiers::CONTROL) | (KeyCode::Char('q'), _) => {
