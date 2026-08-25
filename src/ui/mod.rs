@@ -21,11 +21,12 @@ pub fn render(app: &App, frame: &mut Frame) {
     let theme = &app.theme;
 
     let is_small = size.width < 80 || size.height < 24;
+    let header_height = if size.width < 95 { 4 } else { 3 };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // Header
+            Constraint::Length(header_height), // Header
             Constraint::Length(3), // Tab navigation bar
             Constraint::Min(10),   // Main View Content
             Constraint::Length(1), // Footer status bar
@@ -163,7 +164,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
             Span::raw("Search │ "),
             Span::styled("[t]", Style::default().fg(theme.primary)),
             Span::raw("Theme │ "),
-            Span::styled("[K]", Style::default().fg(theme.primary)),
+            Span::styled("[Del]", Style::default().fg(theme.primary)),
             Span::raw("Kill │ "),
             Span::styled("[q]", Style::default().fg(theme.primary)),
             Span::raw("Quit"),
@@ -180,7 +181,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
             Span::raw(" Invertir  │ "),
             Span::styled("[t]", Style::default().fg(theme.primary)),
             Span::raw(" Tema  │ "),
-            Span::styled("[K]", Style::default().fg(theme.primary)),
+            Span::styled("[Del]", Style::default().fg(theme.primary)),
             Span::raw(" Matar Proceso  │ "),
             Span::styled("[?]", Style::default().fg(theme.primary)),
             Span::raw(" Ayuda  │ "),

@@ -11,7 +11,7 @@
 - 📐 **Diseño Responsivo (Breakpoints)**: Reorganización inteligente del layout para pantallas compactas, estándar y ultra-wide (3 columnas).
 - 🔍 **Búsqueda & Filtrado de Procesos**: Presiona `/` para filtrar procesos en tiempo real por nombre, PID o comando.
 - 📊 **Ordenamiento Interactivo**: Presiona `s` para cambiar la columna de ordenación (CPU, MEM, PID, Nombre) y `r` para invertir el orden.
-- ⚡ **Gestor de Procesos Integrado**: Modal interactivo de confirmación (`k`) para terminar procesos (`SIGTERM`/`SIGKILL`).
+- ⚡ **Gestor de Procesos Integrado**: Modal interactivo de confirmación (`Del` / `K`) para terminar procesos (`SIGTERM`/`SIGKILL`).
 - 📈 **Detalle Extendido de CPU**: Pestaña dedicada `[4] CPU Detail` con desgloses por núcleo, métricas promedio/mínimas/máximas e historial Sparkline.
 - 🛡️ **Restauración Garantizada del Terminal**: Custom panic hook y destructores limpios que aseguran que el terminal nunca quede desconfigurado.
 
@@ -31,7 +31,7 @@
 | `s` | Cambiar columna de ordenación (CPU% → MEM% → PID → Name). |
 | `r` | Invertir el sentido de ordenación (Ascendente / Descendente). |
 | `t` | Cambiar el tema visual dinámicamente. |
-| `K` / `Delete` | Abrir modal de confirmación para terminar el proceso seleccionado. |
+| `Del` / `Delete` / `K` | Abrir modal de confirmación para terminar el proceso seleccionado. |
 | `?` | Abrir / Cerrar ventana modal de ayuda. |
 | `q` / `Ctrl+C` | Salir limpiamente de la aplicación. |
 
