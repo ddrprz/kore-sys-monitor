@@ -12,25 +12,34 @@ pub fn render(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
     let uptime_mins = (app.metrics.uptime_secs % 3600) / 60;
     let theme = &app.theme;
 
-    let is_compact = area.width < 80;
+    let is_compact = area.width < 95;
 
     let header_text = if is_compact {
-        vec![Line::from(vec![
-            Span::styled("kore-sys ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
-            Span::styled("│ ", Style::default().fg(theme.text_muted)),
-            Span::raw("H: "),
-            Span::styled(&app.metrics.host_name, Style::default().fg(theme.success)),
-            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
-            Span::raw("MB: "),
-            Span::styled(format!("{} {}", app.metrics.motherboard.vendor, app.metrics.motherboard.model), Style::default().fg(theme.warning)),
-            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
-            Span::raw("Up: "),
-            Span::styled(format!("{}h{}m", uptime_hours, uptime_mins), Style::default().fg(theme.secondary)),
-        ])]
+        vec![
+            Line::from(vec![
+                Span::styled("kore-sys v0.2.0 ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+                Span::styled("│ ", Style::default().fg(theme.text_muted)),
+                Span::raw("Host: "),
+                Span::styled(&app.metrics.host_name, Style::default().fg(theme.success)),
+                Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+                Span::raw("MB: "),
+                Span::styled(format!("{} {}", app.metrics.motherboard.vendor, app.metrics.motherboard.model), Style::default().fg(theme.warning)),
+            ]),
+            Line::from(vec![
+                Span::raw("OS: "),
+                Span::styled(&app.metrics.os_name, Style::default().fg(theme.warning)),
+                Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+                Span::raw("Up: "),
+                Span::styled(format!("{}h {}m", uptime_hours, uptime_mins), Style::default().fg(theme.secondary)),
+                Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+                Span::raw("Theme: "),
+                Span::styled(theme.variant.name(), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+            ]),
+        ]
     } else {
         vec![Line::from(vec![
             Span::styled(
-                " kore-sys-monitor v0.1.0 ",
+                " kore-sys-monitor v0.2.0 ",
                 Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
             ),
             Span::styled(" │ ", Style::default().fg(theme.text_muted)),
