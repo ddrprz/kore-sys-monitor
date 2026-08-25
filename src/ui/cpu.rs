@@ -16,7 +16,7 @@ pub fn render_summary(app: &App, frame: &mut Frame, area: Rect) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(5), Constraint::Min(0)])
+        .constraints([Constraint::Length(6), Constraint::Min(0)])
         .split(area);
 
     // Global CPU
@@ -39,12 +39,7 @@ pub fn render_summary(app: &App, frame: &mut Frame, area: Rect) {
         String::new()
     };
 
-    let sparkline_data: Vec<u64> = app.metrics.global_cpu_history.iter().copied().collect();
-
-    let title_label = format!(
-        " CPU: {} [ {}%{} ] ",
-        app.metrics.cpu_name, global_val, temp_str
-    );
+    let title_label = format!(" CPU [ Load: {}%{} ] ", global_val, temp_str);
 
     let global_block = Block::default()
         .title(Span::styled(
@@ -55,13 +50,28 @@ pub fn render_summary(app: &App, frame: &mut Frame, area: Rect) {
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.border_inactive));
 
+    let inner = global_block.inner(chunks[0]);
+    frame.render_widget(global_block, chunks[0]);
+
+    let cpu_inner_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(2), Constraint::Min(1)])
+        .split(inner);
+
+    let cpu_name_p = Paragraph::new(Line::from(vec![
+        Span::styled(&app.metrics.cpu_name, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+    ]))
+    .wrap(ratatui::widgets::Wrap { trim: true });
+
+    frame.render_widget(cpu_name_p, cpu_inner_chunks[0]);
+
+    let sparkline_data: Vec<u64> = app.metrics.global_cpu_history.iter().copied().collect();
     let sparkline = Sparkline::default()
-        .block(global_block)
         .data(&sparkline_data)
         .max(100)
         .style(Style::default().fg(color));
 
-    frame.render_widget(sparkline, chunks[0]);
+    frame.render_widget(sparkline, cpu_inner_chunks[1]);
 
     // Per-core Load
     render_core_grid(app, frame, chunks[1], " Per-Core Load ");

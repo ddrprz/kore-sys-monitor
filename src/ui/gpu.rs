@@ -25,19 +25,31 @@ pub fn render_summary(app: &App, frame: &mut Frame, area: Rect) {
 
     let block = Block::default()
         .title(Span::styled(
-            format!(" GPU: {} [ Load: {:.1}% ] ", gpu_name, usage_pct),
+            format!(" GPU [ Load: {:.1}% ] ", usage_pct),
             Style::default().fg(color).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.border_inactive));
 
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(block.inner(area));
+        .constraints([
+            Constraint::Length(2), // GPU Name (wrapped)
+            Constraint::Min(2),    // Sparkline load
+            Constraint::Length(1), // VRAM Gauge
+        ])
+        .split(inner);
 
-    frame.render_widget(block, area);
+    let gpu_name_p = Paragraph::new(Line::from(vec![
+        Span::styled(gpu_name, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+    ]))
+    .wrap(ratatui::widgets::Wrap { trim: true });
+
+    frame.render_widget(gpu_name_p, chunks[0]);
 
     // Sparkline load
     let sparkline_data: Vec<u64> = app.metrics.gpu_usage_history.iter().copied().collect();
@@ -46,7 +58,7 @@ pub fn render_summary(app: &App, frame: &mut Frame, area: Rect) {
         .max(100)
         .style(Style::default().fg(color));
 
-    frame.render_widget(sparkline, chunks[0]);
+    frame.render_widget(sparkline, chunks[1]);
 
     // VRAM Gauge
     let vram_gauge = Gauge::default()
@@ -54,7 +66,7 @@ pub fn render_summary(app: &App, frame: &mut Frame, area: Rect) {
         .ratio((vram_pct as f64 / 100.0).clamp(0.0, 1.0))
         .label(format!("VRAM: {:.1}%", vram_pct));
 
-    frame.render_widget(vram_gauge, chunks[1]);
+    frame.render_widget(vram_gauge, chunks[2]);
 }
 
 pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
