@@ -34,6 +34,19 @@ pub struct GpuInfo {
     pub temperature_c: Option<f32>,
 }
 
+#[derive(Debug, Clone)]
+pub struct MotherboardInfo {
+    pub vendor: String,
+    pub model: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RamDetails {
+    pub memory_type: String,
+    pub speed_mhz: String,
+    pub manufacturer: String,
+}
+
 pub struct SystemMetrics {
     sys: System,
     disks: Disks,
@@ -42,6 +55,8 @@ pub struct SystemMetrics {
     pub os_name: String,
     pub kernel_version: String,
     pub cpu_arch: String,
+    pub motherboard: MotherboardInfo,
+    pub ram_details: RamDetails,
     pub uptime_secs: u64,
     pub global_cpu_history: VecDeque<u64>,
     pub per_core_cpu: Vec<f32>,
@@ -81,6 +96,8 @@ impl SystemMetrics {
             let arch = System::cpu_arch();
             if arch.is_empty() { "Unknown".to_string() } else { arch }
         };
+        let motherboard = detect_motherboard();
+        let ram_details = detect_ram_details();
 
         let mut metrics = Self {
             sys,
@@ -90,6 +107,8 @@ impl SystemMetrics {
             os_name,
             kernel_version,
             cpu_arch,
+            motherboard,
+            ram_details,
             uptime_secs: System::uptime(),
             global_cpu_history: VecDeque::with_capacity(max_history_len),
             per_core_cpu: Vec::new(),
@@ -352,3 +371,208 @@ fn detect_gpus() -> Vec<GpuInfo> {
 
     gpus
 }
+
+fn detect_motherboard() -> MotherboardInfo {
+    #[cfg(target_os = "linux")]
+    {
+        use std::fs;
+        let vendor = fs::read_to_string("/sys/class/dmi/id/board_vendor")
+            .or_else(|_| fs::read_to_string("/sys/class/dmi/id/sys_vendor"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+
+        let model = fs::read_to_string("/sys/class/dmi/id/board_name")
+            .or_else(|_| fs::read_to_string("/sys/class/dmi/id/product_name"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+
+        if !vendor.is_empty() || !model.is_empty() {
+            return MotherboardInfo {
+                vendor: if vendor.is_empty() { "Unknown".to_string() } else { vendor },
+                model: if model.is_empty() { "Motherboard".to_string() } else { model },
+            };
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        if let Ok(output) = Command::new("powershell")
+            .args(&[
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer, Product | Format-Table -HideTableHeaders"
+            ])
+            .output()
+        {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout);
+                for line in text.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            return MotherboardInfo {
+                                vendor: parts[0].to_string(),
+                                model: parts[1..].join(" "),
+                            };
+                        } else if !parts.is_empty() {
+                            return MotherboardInfo {
+                                vendor: parts[0].to_string(),
+                                model: "BaseBoard".to_string(),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        if let Ok(output) = Command::new("sysctl")
+            .arg("-n")
+            .arg("hw.model")
+            .output()
+        {
+            if output.status.success() {
+                let model = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !model.is_empty() {
+                    return MotherboardInfo {
+                        vendor: "Apple Inc.".to_string(),
+                        model,
+                    };
+                }
+            }
+        }
+    }
+
+    MotherboardInfo {
+        vendor: "Standard".to_string(),
+        model: "Motherboard".to_string(),
+    }
+}
+
+fn detect_ram_details() -> RamDetails {
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        if let Ok(output) = Command::new("inxi").arg("-m").output() {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout);
+                let mut mem_type = String::new();
+                let mut speed = String::new();
+                let mut manufacturer = String::new();
+
+                for line in text.lines() {
+                    let line_lower = line.to_lowercase();
+                    if line_lower.contains("type:") && mem_type.is_empty() {
+                        if let Some(pos) = line_lower.find("type:") {
+                            let rest = &line[pos + 5..];
+                            let part = rest.split_whitespace().next().unwrap_or("");
+                            if !part.is_empty() {
+                                mem_type = part.to_string();
+                            }
+                        }
+                    }
+                    if line_lower.contains("speed:") && speed.is_empty() {
+                        if let Some(pos) = line_lower.find("speed:") {
+                            let rest = &line[pos + 6..];
+                            let parts: Vec<&str> = rest.split_whitespace().take(2).collect();
+                            if !parts.is_empty() {
+                                speed = parts.join(" ");
+                            }
+                        }
+                    }
+                    if line_lower.contains("manufacturer:") && manufacturer.is_empty() {
+                        if let Some(pos) = line_lower.find("manufacturer:") {
+                            let rest = &line[pos + 13..];
+                            let part = rest.split_whitespace().next().unwrap_or("");
+                            if !part.is_empty() {
+                                manufacturer = part.to_string();
+                            }
+                        }
+                    }
+                }
+
+                if !mem_type.is_empty() || !speed.is_empty() {
+                    return RamDetails {
+                        memory_type: if mem_type.is_empty() { "DDR RAM".to_string() } else { mem_type },
+                        speed_mhz: if speed.is_empty() { "N/A".to_string() } else { speed },
+                        manufacturer: if manufacturer.is_empty() { "Standard RAM".to_string() } else { manufacturer },
+                    };
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        if let Ok(output) = Command::new("powershell")
+            .args(&[
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_PhysicalMemory | Select-Object Manufacturer, Speed, SMBIOSMemoryType | Format-Table -HideTableHeaders"
+            ])
+            .output()
+        {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout);
+                for line in text.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            let mfr = parts[0].to_string();
+                            let spd = format!("{} MHz", parts[1]);
+                            let smbios_code = parts.get(2).unwrap_or(&"0").parse::<u32>().unwrap_or(0);
+                            let mem_t = match smbios_code {
+                                24 => "DDR3",
+                                26 => "DDR4",
+                                30 => "LPDDR4",
+                                34 => "DDR5",
+                                35 => "LPDDR5",
+                                _ => "DDR RAM",
+                            };
+                            return RamDetails {
+                                memory_type: mem_t.to_string(),
+                                speed_mhz: spd,
+                                manufacturer: mfr,
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    RamDetails {
+        memory_type: "DDR RAM".to_string(),
+        speed_mhz: "N/A".to_string(),
+        manufacturer: "Standard".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_motherboard() {
+        let mobo = detect_motherboard();
+        assert!(!mobo.vendor.is_empty());
+        assert!(!mobo.model.is_empty());
+    }
+
+    #[test]
+    fn test_detect_ram_details() {
+        let ram = detect_ram_details();
+        assert!(!ram.memory_type.is_empty());
+        assert!(!ram.speed_mhz.is_empty());
+        assert!(!ram.manufacturer.is_empty());
+    }
+}
+
+

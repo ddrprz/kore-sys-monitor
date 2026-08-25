@@ -2,8 +2,8 @@ use crate::app::App;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Span,
-    widgets::{Block, BorderType, Borders, Gauge},
+    text::{Line, Span},
+    widgets::{Block, BorderType, Borders, Gauge, Paragraph},
     Frame,
 };
 
@@ -15,9 +15,18 @@ fn format_bytes(bytes: u64) -> String {
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let theme = &app.theme;
 
+    let ram_spec = if app.metrics.ram_details.speed_mhz != "N/A" {
+        format!(
+            " Memory & Swap [{}] ",
+            app.metrics.ram_details.memory_type
+        )
+    } else {
+        " Memory & Swap ".to_string()
+    };
+
     let block = Block::default()
         .title(Span::styled(
-            " Memory & Swap ",
+            ram_spec,
             Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
@@ -29,7 +38,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(2), Constraint::Length(2)])
+        .constraints([
+            Constraint::Length(2), // RAM Gauge
+            Constraint::Length(2), // Swap Gauge
+            Constraint::Min(1),    // Hardware details line
+        ])
         .margin(1)
         .split(inner);
 
@@ -92,4 +105,29 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .label(swap_label);
 
     frame.render_widget(swap_gauge, chunks[1]);
+
+    // Hardware RAM spec detail line
+    if chunks.len() > 2 && chunks[2].height > 0 {
+        let ram_details_line = Line::from(vec![
+            Span::styled("RAM Spec: ", Style::default().fg(theme.text_muted)),
+            Span::styled(
+                &app.metrics.ram_details.memory_type,
+                Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+            Span::raw("Speed: "),
+            Span::styled(
+                &app.metrics.ram_details.speed_mhz,
+                Style::default().fg(theme.secondary),
+            ),
+            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+            Span::raw("Vendor: "),
+            Span::styled(
+                &app.metrics.ram_details.manufacturer,
+                Style::default().fg(theme.warning),
+            ),
+        ]);
+        let details_paragraph = Paragraph::new(ram_details_line);
+        frame.render_widget(details_paragraph, chunks[2]);
+    }
 }
