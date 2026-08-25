@@ -109,6 +109,8 @@ pub struct SystemMetrics {
     max_history_len: usize,
     prev_rx_total: u64,
     prev_tx_total: u64,
+    cached_physical_disks: Vec<(String, String, String)>,
+    cached_network_adapter_models: std::collections::HashMap<String, String>,
 }
 
 impl SystemMetrics {
@@ -137,6 +139,8 @@ impl SystemMetrics {
         let cpu_temp_c = detect_cpu_temp(&mut sys);
         let motherboard = detect_motherboard();
         let ram_details = detect_ram_details();
+        let cached_physical_disks = detect_physical_disks();
+        let cached_network_adapter_models = detect_network_adapter_models();
 
         let mut metrics = Self {
             sys,
@@ -171,6 +175,8 @@ impl SystemMetrics {
             max_history_len,
             prev_rx_total: 0,
             prev_tx_total: 0,
+            cached_physical_disks,
+            cached_network_adapter_models,
         };
 
         metrics.refresh(1.0);
@@ -204,7 +210,6 @@ impl SystemMetrics {
 
         // Disks
         self.disks.refresh(true);
-        let physical_disks = detect_physical_disks();
         self.disk_list = self
             .disks
             .list()
@@ -219,7 +224,7 @@ impl SystemMetrics {
                 } else {
                     0.0
                 };
-                let (model_name, kind_str, health_str) = resolve_disk_info(disk, &physical_disks, idx);
+                let (model_name, kind_str, health_str) = resolve_disk_info(disk, &self.cached_physical_disks, idx);
                 DiskInfo {
                     name: model_name,
                     mount_point: disk.mount_point().to_string_lossy().to_string(),
@@ -236,7 +241,6 @@ impl SystemMetrics {
 
         // Networks
         self.networks.refresh(true);
-        let adapter_models = detect_network_adapter_models();
         let mut curr_rx: u64 = 0;
         let mut curr_tx: u64 = 0;
         let mut ifaces = Vec::new();
@@ -263,7 +267,7 @@ impl SystemMetrics {
 
             let is_up = rx > 0 || tx > 0 || network.packets_received() > 0 || network.packets_transmitted() > 0;
 
-            let model_desc = adapter_models
+            let model_desc = self.cached_network_adapter_models
                 .get(iface_name)
                 .cloned()
                 .unwrap_or_else(|| format!("Network Adapter ({})", iface_name));
