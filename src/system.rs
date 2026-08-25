@@ -390,21 +390,18 @@ fn detect_cpu_temp(_sys: &mut System) -> Option<f32> {
 
     for comp in components.list() {
         let label = comp.label().to_lowercase();
-        if label.contains("cpu")
+        if (label.contains("cpu")
             || label.contains("core")
             || label.contains("package")
             || label.contains("k10temp")
             || label.contains("coretemp")
             || label.contains("zenpower")
             || label.contains("acpitz")
-            || label.contains("temp")
-        {
-            if let Some(t) = comp.temperature() {
-                if t > 0.0 && t < 120.0 {
+            || label.contains("temp"))
+            && let Some(t) = comp.temperature()
+                && t > 0.0 && t < 120.0 {
                     max_temp = Some(max_temp.map_or(t, |m| m.max(t)));
                 }
-            }
-        }
     }
 
     if max_temp.is_some() {
@@ -417,16 +414,14 @@ fn detect_cpu_temp(_sys: &mut System) -> Option<f32> {
         if let Ok(entries) = fs::read_dir("/sys/class/thermal") {
             for entry in entries.flatten() {
                 let path = entry.path().join("temp");
-                if path.exists() {
-                    if let Ok(content) = fs::read_to_string(path) {
-                        if let Ok(val) = content.trim().parse::<f32>() {
+                if path.exists()
+                    && let Ok(content) = fs::read_to_string(path)
+                        && let Ok(val) = content.trim().parse::<f32>() {
                             let temp = if val > 1000.0 { val / 1000.0 } else { val };
                             if temp > 10.0 && temp < 120.0 {
                                 return Some(temp);
                             }
                         }
-                    }
-                }
             }
         }
     }
@@ -516,56 +511,149 @@ fn detect_motherboard() -> MotherboardInfo {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn detect_ram_details_linux() -> Option<RamDetails> {
+    use std::fs;
+    use std::process::Command;
+
+    // Tier 1: Try Sysfs EDAC (Error Detection and Correction) memory controllers
+    if let Ok(entries) = fs::read_dir("/sys/devices/system/edac/mc") {
+        for entry in entries.flatten() {
+            let mc_name_path = entry.path().join("mc_name");
+            if mc_name_path.exists()
+                && let Ok(mc_name) = fs::read_to_string(mc_name_path) {
+                    let mc_clean = mc_name.trim();
+                    if !mc_clean.is_empty() {
+                        return Some(RamDetails {
+                            memory_type: if mc_clean.to_lowercase().contains("ddr") {
+                                mc_clean.to_string()
+                            } else {
+                                format!("{} RAM", mc_clean)
+                            },
+                            speed_mhz: "N/A".to_string(),
+                            manufacturer: "Hardware Controller".to_string(),
+                        });
+                    }
+                }
+        }
+    }
+
+    // Tier 2: Try `dmidecode -t memory` (if available and accessible)
+    if let Ok(output) = Command::new("dmidecode").args(["-t", "memory"]).output()
+        && output.status.success() {
+            let text = String::from_utf8_lossy(&output.stdout);
+            let mut mem_type = String::new();
+            let mut speed = String::new();
+            let mut manufacturer = String::new();
+
+            for line in text.lines() {
+                let trimmed = line.trim();
+                let line_lower = trimmed.to_lowercase();
+
+                if line_lower.starts_with("type:") && mem_type.is_empty() {
+                    let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+                    if !val.is_empty() && !val.eq_ignore_ascii_case("unknown") && !val.eq_ignore_ascii_case("none") {
+                        mem_type = val.to_string();
+                    }
+                }
+                if line_lower.starts_with("speed:") && speed.is_empty() {
+                    let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+                    if !val.is_empty() && !val.eq_ignore_ascii_case("unknown") {
+                        speed = val.to_string();
+                    }
+                }
+                if line_lower.starts_with("manufacturer:") && manufacturer.is_empty() {
+                    let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+                    if !val.is_empty() && !val.eq_ignore_ascii_case("unknown") {
+                        manufacturer = val.to_string();
+                    }
+                }
+            }
+
+            if !mem_type.is_empty() || !speed.is_empty() {
+                return Some(RamDetails {
+                    memory_type: if mem_type.is_empty() { "DDR RAM".to_string() } else { mem_type },
+                    speed_mhz: if speed.is_empty() { "N/A".to_string() } else { speed },
+                    manufacturer: if manufacturer.is_empty() { "Standard RAM".to_string() } else { manufacturer },
+                });
+            }
+        }
+
+    // Tier 3: Try `lshw -C memory` (if available)
+    if let Ok(output) = Command::new("lshw").args(["-C", "memory", "-short"]).output()
+        && output.status.success() {
+            let text = String::from_utf8_lossy(&output.stdout);
+            for line in text.lines() {
+                let line_lower = line.to_lowercase();
+                if line_lower.contains("system memory") || line_lower.contains("dimm") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 3 {
+                        let desc = parts[2..].join(" ");
+                        if !desc.is_empty() {
+                            return Some(RamDetails {
+                                memory_type: desc,
+                                speed_mhz: "N/A".to_string(),
+                                manufacturer: "System Memory".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+    // Tier 4: Fallback to `inxi -m`
+    if let Ok(output) = Command::new("inxi").arg("-m").output()
+        && output.status.success() {
+            let text = String::from_utf8_lossy(&output.stdout);
+            let mut mem_type = String::new();
+            let mut speed = String::new();
+            let mut manufacturer = String::new();
+
+            for line in text.lines() {
+                let line_lower = line.to_lowercase();
+                if line_lower.contains("type:") && mem_type.is_empty()
+                    && let Some(pos) = line_lower.find("type:") {
+                        let rest = &line[pos + 5..];
+                        let part = rest.split_whitespace().next().unwrap_or("");
+                        if !part.is_empty() {
+                            mem_type = part.to_string();
+                        }
+                    }
+                if line_lower.contains("speed:") && speed.is_empty()
+                    && let Some(pos) = line_lower.find("speed:") {
+                        let rest = &line[pos + 6..];
+                        let parts: Vec<&str> = rest.split_whitespace().take(2).collect();
+                        if !parts.is_empty() {
+                            speed = parts.join(" ");
+                        }
+                    }
+                if line_lower.contains("manufacturer:") && manufacturer.is_empty()
+                    && let Some(pos) = line_lower.find("manufacturer:") {
+                        let rest = &line[pos + 13..];
+                        let part = rest.split_whitespace().next().unwrap_or("");
+                        if !part.is_empty() {
+                            manufacturer = part.to_string();
+                        }
+                    }
+            }
+
+            if !mem_type.is_empty() || !speed.is_empty() {
+                return Some(RamDetails {
+                    memory_type: if mem_type.is_empty() { "DDR RAM".to_string() } else { mem_type },
+                    speed_mhz: if speed.is_empty() { "N/A".to_string() } else { speed },
+                    manufacturer: if manufacturer.is_empty() { "Standard RAM".to_string() } else { manufacturer },
+                });
+            }
+        }
+
+    None
+}
+
 fn detect_ram_details() -> RamDetails {
     #[cfg(target_os = "linux")]
     {
-        use std::process::Command;
-        if let Ok(output) = Command::new("inxi").arg("-m").output() {
-            if output.status.success() {
-                let text = String::from_utf8_lossy(&output.stdout);
-                let mut mem_type = String::new();
-                let mut speed = String::new();
-                let mut manufacturer = String::new();
-
-                for line in text.lines() {
-                    let line_lower = line.to_lowercase();
-                    if line_lower.contains("type:") && mem_type.is_empty() {
-                        if let Some(pos) = line_lower.find("type:") {
-                            let rest = &line[pos + 5..];
-                            let part = rest.split_whitespace().next().unwrap_or("");
-                            if !part.is_empty() {
-                                mem_type = part.to_string();
-                            }
-                        }
-                    }
-                    if line_lower.contains("speed:") && speed.is_empty() {
-                        if let Some(pos) = line_lower.find("speed:") {
-                            let rest = &line[pos + 6..];
-                            let parts: Vec<&str> = rest.split_whitespace().take(2).collect();
-                            if !parts.is_empty() {
-                                speed = parts.join(" ");
-                            }
-                        }
-                    }
-                    if line_lower.contains("manufacturer:") && manufacturer.is_empty() {
-                        if let Some(pos) = line_lower.find("manufacturer:") {
-                            let rest = &line[pos + 13..];
-                            let part = rest.split_whitespace().next().unwrap_or("");
-                            if !part.is_empty() {
-                                manufacturer = part.to_string();
-                            }
-                        }
-                    }
-                }
-
-                if !mem_type.is_empty() || !speed.is_empty() {
-                    return RamDetails {
-                        memory_type: if mem_type.is_empty() { "DDR RAM".to_string() } else { mem_type },
-                        speed_mhz: if speed.is_empty() { "N/A".to_string() } else { speed },
-                        manufacturer: if manufacturer.is_empty() { "Standard RAM".to_string() } else { manufacturer },
-                    };
-                }
-            }
+        if let Some(details) = detect_ram_details_linux() {
+            return details;
         }
     }
 

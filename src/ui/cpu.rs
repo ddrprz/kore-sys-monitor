@@ -198,7 +198,7 @@ fn render_core_grid(app: &App, frame: &mut Frame, area: Rect, title: &str) {
         1
     };
 
-    let core_rows = (num_cores + cols - 1) / cols;
+    let core_rows = num_cores.div_ceil(cols);
 
     let per_core_block = Block::default()
         .title(Span::styled(
