@@ -137,11 +137,10 @@ impl App {
         self.clamp_process_selection();
 
         // Clear status message after 3 seconds
-        if let Some((_, time)) = &self.status_message {
-            if time.elapsed().as_secs() >= 3 {
+        if let Some((_, time)) = &self.status_message
+            && time.elapsed().as_secs() >= 3 {
                 self.status_message = None;
             }
-        }
     }
 
     pub fn filtered_sorted_processes(&self) -> Vec<ProcessInfo> {

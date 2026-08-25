@@ -5,8 +5,8 @@ use std::time::Duration;
 
 pub fn handle_events(app: &mut App, tick_rate: Duration) -> Result<()> {
 
-    if event::poll(tick_rate)? {
-        if let Event::Key(key) = event::read()? {
+    if event::poll(tick_rate)?
+        && let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Release {
                 return Ok(());
             }
@@ -50,10 +50,8 @@ pub fn handle_events(app: &mut App, tick_rate: Duration) -> Result<()> {
                     (KeyCode::Char('K'), _) | (KeyCode::Delete, _) => app.open_kill_modal(),
 
                     (KeyCode::Char('?'), _) => app.input_mode = InputMode::HelpModal,
-                    (KeyCode::Esc, _) => {
-                        if !app.search_query.is_empty() {
-                            app.search_query.clear();
-                        }
+                    (KeyCode::Esc, _) if !app.search_query.is_empty() => {
+                        app.search_query.clear();
                     }
                     _ => {}
                 },
@@ -89,6 +87,5 @@ pub fn handle_events(app: &mut App, tick_rate: Duration) -> Result<()> {
                 },
             }
         }
-    }
     Ok(())
 }
