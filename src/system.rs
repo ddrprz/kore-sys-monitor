@@ -27,6 +27,7 @@ pub struct DiskInfo {
 
 #[derive(Debug, Clone)]
 pub struct NetworkInterfaceInfo {
+    #[allow(dead_code)]
     pub name: String,
     pub model: String,
     pub rx_bytes: u64,
@@ -859,6 +860,22 @@ fn detect_physical_disks() -> Vec<(String, String, String)> {
     results
 }
 
+fn format_health_percentage(raw_health: &str) -> String {
+    let lower = raw_health.to_lowercase();
+    if lower.contains('%') {
+        return raw_health.to_string();
+    }
+    if lower.contains("healthy") || lower.contains("ok") || lower.contains("good") {
+        "100%".to_string()
+    } else if lower.contains("warn") || lower.contains("degrad") {
+        "75%".to_string()
+    } else if lower.contains("critical") || lower.contains("unhealthy") || lower.contains("error") {
+        "25%".to_string()
+    } else {
+        "100%".to_string()
+    }
+}
+
 fn resolve_disk_info(disk: &sysinfo::Disk, physical_disks: &[(String, String, String)], index: usize) -> (String, String, String) {
     let sys_name = disk.name().to_string_lossy().to_string();
     let mount_str = disk.mount_point().to_string_lossy().to_string();
@@ -903,14 +920,14 @@ fn resolve_disk_info(disk: &sysinfo::Disk, physical_disks: &[(String, String, St
         } else {
             kind.clone()
         };
-        (model.clone(), final_kind, health.clone())
+        (model.clone(), final_kind, format_health_percentage(health))
     } else {
         let model = if !sys_name.is_empty() && sys_name != "Local Fixed Disk" && sys_name != "Disque local" {
             sys_name
         } else {
             format!("Disk ({})", mount_str)
         };
-        (model, default_kind, "Healthy".to_string())
+        (model, default_kind, "100%".to_string())
     }
 }
 

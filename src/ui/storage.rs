@@ -37,9 +37,10 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             theme.text_muted
         };
 
-        let health_color = if d.health.to_lowercase().contains("healthy") || d.health.to_lowercase().contains("ok") {
+        let pct_val = d.health.trim_end_matches('%').parse::<u32>().unwrap_or(100);
+        let health_color = if pct_val >= 90 {
             theme.success
-        } else if d.health.to_lowercase().contains("warn") || d.health.to_lowercase().contains("degrad") {
+        } else if pct_val >= 70 {
             theme.warning
         } else {
             theme.critical

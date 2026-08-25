@@ -48,7 +48,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .split(inner);
 
     // 1. Network Adapters Table
-    let header_cells = ["Interface", "Adapter Model", "Status", "RX Speed", "TX Speed", "Total RX", "Total TX"]
+    let header_cells = ["Adapter Model", "Status", "RX Speed", "TX Speed", "Total RX", "Total TX"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
     let header = Row::new(header_cells).height(1);
@@ -58,8 +58,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         let status_color = if iface.is_up { theme.success } else { theme.text_muted };
 
         Row::new(vec![
-            Cell::from(iface.name.clone()).style(Style::default().add_modifier(Modifier::BOLD)),
-            Cell::from(iface.model.clone()).style(Style::default().fg(theme.primary)),
+            Cell::from(iface.model.clone()).style(Style::default().add_modifier(Modifier::BOLD).fg(theme.primary)),
             Cell::from(status_str).style(Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
             Cell::from(format!("{:.1} KB/s", iface.rx_rate_kbs)).style(Style::default().fg(theme.success)),
             Cell::from(format!("{:.1} KB/s", iface.tx_rate_kbs)).style(Style::default().fg(theme.secondary)),
@@ -71,8 +70,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let adapters_table = Table::new(
         rows,
         [
-            Constraint::Length(14),
-            Constraint::Min(22),
+            Constraint::Min(26),
             Constraint::Length(8),
             Constraint::Length(12),
             Constraint::Length(12),
