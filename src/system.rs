@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
+use sysinfo::{Components, Disks, Networks, ProcessesToUpdate, System};
 
 #[derive(Debug, Clone)]
 pub struct ProcessInfo {
@@ -55,6 +55,8 @@ pub struct SystemMetrics {
     pub os_name: String,
     pub kernel_version: String,
     pub cpu_arch: String,
+    pub cpu_name: String,
+    pub cpu_temp_c: Option<f32>,
     pub motherboard: MotherboardInfo,
     pub ram_details: RamDetails,
     pub uptime_secs: u64,
@@ -96,6 +98,13 @@ impl SystemMetrics {
             let arch = System::cpu_arch();
             if arch.is_empty() { "Unknown".to_string() } else { arch }
         };
+        let cpu_name = sys
+            .cpus()
+            .first()
+            .map(|c| c.brand().trim().to_string())
+            .filter(|b| !b.is_empty())
+            .unwrap_or_else(|| "Generic CPU".to_string());
+        let cpu_temp_c = detect_cpu_temp(&mut sys);
         let motherboard = detect_motherboard();
         let ram_details = detect_ram_details();
 
@@ -107,6 +116,8 @@ impl SystemMetrics {
             os_name,
             kernel_version,
             cpu_arch,
+            cpu_name,
+            cpu_temp_c,
             motherboard,
             ram_details,
             uptime_secs: System::uptime(),
@@ -141,8 +152,9 @@ impl SystemMetrics {
         self.sys.refresh_memory();
         self.sys.refresh_processes(ProcessesToUpdate::All, true);
 
-        // System Header
+        // System Header & CPU Temperature
         self.uptime_secs = System::uptime();
+        self.cpu_temp_c = detect_cpu_temp(&mut self.sys);
 
         // CPU Metrics
         let global_cpu = self.sys.global_cpu_usage().clamp(0.0, 100.0);
@@ -370,6 +382,56 @@ fn detect_gpus() -> Vec<GpuInfo> {
     }
 
     gpus
+}
+
+fn detect_cpu_temp(_sys: &mut System) -> Option<f32> {
+    let components = Components::new_with_refreshed_list();
+    let mut max_temp: Option<f32> = None;
+
+    for comp in components.list() {
+        let label = comp.label().to_lowercase();
+        if label.contains("cpu")
+            || label.contains("core")
+            || label.contains("package")
+            || label.contains("k10temp")
+            || label.contains("coretemp")
+            || label.contains("zenpower")
+            || label.contains("acpitz")
+            || label.contains("temp")
+        {
+            if let Some(t) = comp.temperature() {
+                if t > 0.0 && t < 120.0 {
+                    max_temp = Some(max_temp.map_or(t, |m| m.max(t)));
+                }
+            }
+        }
+    }
+
+    if max_temp.is_some() {
+        return max_temp;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::fs;
+        if let Ok(entries) = fs::read_dir("/sys/class/thermal") {
+            for entry in entries.flatten() {
+                let path = entry.path().join("temp");
+                if path.exists() {
+                    if let Ok(content) = fs::read_to_string(path) {
+                        if let Ok(val) = content.trim().parse::<f32>() {
+                            let temp = if val > 1000.0 { val / 1000.0 } else { val };
+                            if temp > 10.0 && temp < 120.0 {
+                                return Some(temp);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
 
 fn detect_motherboard() -> MotherboardInfo {

@@ -21,7 +21,7 @@ pub fn render(app: &App, frame: &mut Frame) {
     let theme = &app.theme;
 
     let is_small = size.width < 80 || size.height < 24;
-    let header_height = if size.width < 95 { 4 } else { 3 };
+    let header_height = if size.width < 135 { 4 } else { 3 };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)

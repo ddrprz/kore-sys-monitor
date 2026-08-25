@@ -12,7 +12,7 @@ pub fn render(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
     let uptime_mins = (app.metrics.uptime_secs % 3600) / 60;
     let theme = &app.theme;
 
-    let is_compact = area.width < 95;
+    let is_compact = area.width < 135;
 
     let header_text = if is_compact {
         vec![
@@ -74,6 +74,7 @@ pub fn render(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
 
     let paragraph = Paragraph::new(header_text)
         .alignment(Alignment::Center)
+        .wrap(ratatui::widgets::Wrap { trim: true })
         .block(
             Block::default()
                 .borders(Borders::ALL)

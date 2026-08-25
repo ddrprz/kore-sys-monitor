@@ -33,11 +33,22 @@ pub fn render_summary(app: &App, frame: &mut Frame, area: Rect) {
         _ => theme.critical,
     };
 
+    let temp_str = if let Some(temp) = app.metrics.cpu_temp_c {
+        format!(" │ {:.1}°C", temp)
+    } else {
+        String::new()
+    };
+
     let sparkline_data: Vec<u64> = app.metrics.global_cpu_history.iter().copied().collect();
+
+    let title_label = format!(
+        " CPU: {} [ {}%{} ] ",
+        app.metrics.cpu_name, global_val, temp_str
+    );
 
     let global_block = Block::default()
         .title(Span::styled(
-            format!(" CPU Global [ {}% ] ", global_val),
+            title_label,
             Style::default().fg(color).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
@@ -103,19 +114,38 @@ pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
         .copied()
         .fold(100.0f32, f32::min);
 
-    let stats_text = Line::from(vec![
-        Span::raw("Cores: "),
+    let mut stats_spans = vec![
+        Span::styled(
+            format!("Model: {} ", app.metrics.cpu_name),
+            Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("│ Cores: "),
         Span::styled(
             app.metrics.per_core_cpu.len().to_string(),
             Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
         ),
-        Span::raw(" │ Avg Load: "),
+        Span::raw(" │ Avg: "),
         Span::styled(format!("{:.1}%", avg_load), Style::default().fg(theme.warning)),
-        Span::raw(" │ Min Core: "),
+        Span::raw(" │ Min: "),
         Span::styled(format!("{:.1}%", min_core_load), Style::default().fg(theme.success)),
-        Span::raw(" │ Max Core: "),
+        Span::raw(" │ Max: "),
         Span::styled(format!("{:.1}%", max_core_load), Style::default().fg(theme.critical)),
-    ]);
+    ];
+
+    if let Some(temp) = app.metrics.cpu_temp_c {
+        let temp_color = match temp as u64 {
+            0..=59 => theme.success,
+            60..=79 => theme.warning,
+            _ => theme.critical,
+        };
+        stats_spans.push(Span::raw(" │ Temp: "));
+        stats_spans.push(Span::styled(
+            format!("{:.1}°C", temp),
+            Style::default().fg(temp_color).add_modifier(Modifier::BOLD),
+        ));
+    }
+
+    let stats_text = Line::from(stats_spans);
 
     let detail_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -124,9 +154,15 @@ pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(Paragraph::new(stats_text), detail_chunks[0]);
 
+    let temp_title = if let Some(t) = app.metrics.cpu_temp_c {
+        format!(" │ Temp: {:.1}°C", t)
+    } else {
+        String::new()
+    };
+
     let global_block = Block::default()
         .title(Span::styled(
-            format!(" Full CPU Usage History [ Current: {}% ] ", global_val),
+            format!(" CPU Usage History [ Current: {}%{} ] ", global_val, temp_title),
             Style::default().fg(color).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
