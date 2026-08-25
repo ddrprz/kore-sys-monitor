@@ -21,6 +21,9 @@ pub fn render(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
             Span::raw("H: "),
             Span::styled(&app.metrics.host_name, Style::default().fg(theme.success)),
             Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+            Span::raw("MB: "),
+            Span::styled(format!("{} {}", app.metrics.motherboard.vendor, app.metrics.motherboard.model), Style::default().fg(theme.warning)),
+            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
             Span::raw("Up: "),
             Span::styled(format!("{}h{}m", uptime_hours, uptime_mins), Style::default().fg(theme.secondary)),
         ])]
@@ -36,6 +39,12 @@ pub fn render(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
             Span::styled(" │ ", Style::default().fg(theme.text_muted)),
             Span::raw("OS: "),
             Span::styled(&app.metrics.os_name, Style::default().fg(theme.warning)),
+            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
+            Span::raw("Mobo: "),
+            Span::styled(
+                format!("{} {}", app.metrics.motherboard.vendor, app.metrics.motherboard.model),
+                Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" │ ", Style::default().fg(theme.text_muted)),
             Span::raw("Kernel: "),
             Span::styled(&app.metrics.kernel_version, Style::default().fg(theme.primary)),
