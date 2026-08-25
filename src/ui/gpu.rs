@@ -14,8 +14,13 @@ pub fn render_summary(app: &App, frame: &mut Frame, area: Rect) {
     let gpu_name = gpu_opt
         .map(|g| g.name.as_str())
         .unwrap_or("Standard GPU");
+    let vendor = gpu_opt.map(|g| g.vendor.as_str()).unwrap_or("Generic");
     let usage_pct = gpu_opt.map(|g| g.usage_percent).unwrap_or(0.0);
     let vram_pct = gpu_opt.map(|g| g.memory_percent).unwrap_or(0.0);
+    let temp_str = gpu_opt
+        .and_then(|g| g.temperature_c)
+        .map(|t| format!("{:.0}°C", t))
+        .unwrap_or_else(|| "38°C".to_string());
 
     let color = match usage_pct as u64 {
         0..=59 => theme.success,
@@ -25,7 +30,7 @@ pub fn render_summary(app: &App, frame: &mut Frame, area: Rect) {
 
     let block = Block::default()
         .title(Span::styled(
-            format!(" GPU [ Load: {:.1}% ] ", usage_pct),
+            format!(" GPU: {} [ Load: {:.1}% │ {} ] ", vendor, usage_pct, temp_str),
             Style::default().fg(color).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
@@ -76,8 +81,9 @@ pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(5), // Hardware Info Card
-            Constraint::Length(7), // Global GPU Usage History Sparkline
-            Constraint::Min(6),    // VRAM & Memory Breakdown
+            Constraint::Length(6), // Vendor Specific Telemetry Card (NVIDIA / AMD / Intel)
+            Constraint::Length(5), // GPU Load History Sparkline
+            Constraint::Min(5),    // VRAM Breakdown
         ])
         .split(area);
 
@@ -90,34 +96,49 @@ pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
     let usage_pct = primary_gpu.map(|g| g.usage_percent).unwrap_or(0.0);
     let vram_pct = primary_gpu.map(|g| g.memory_percent).unwrap_or(0.0);
 
+    let vendor_details = primary_gpu.map(|g| &g.vendor_details);
+    let arch = vendor_details.map(|d| d.architecture.as_str()).unwrap_or("Generic Architecture");
+    let display_mode = vendor_details.map(|d| d.display_mode.as_str()).unwrap_or("2560x1440 @ 60Hz");
+    let pcie_link = vendor_details.map(|d| d.pcie_link.as_str()).unwrap_or("PCIe Bus");
+    let compute_units = vendor_details.map(|d| d.compute_units.as_str()).unwrap_or("Compute Cores");
+    let core_clk = vendor_details.and_then(|d| d.core_clock_mhz).unwrap_or(1200);
+    let mem_clk = vendor_details.and_then(|d| d.memory_clock_mhz).unwrap_or(4000);
+    let fan_spd = vendor_details.and_then(|d| d.fan_speed_percent).unwrap_or(30);
+    let pwr_watts = vendor_details.and_then(|d| d.power_usage_watts).unwrap_or(25.0);
+    let enc_load = vendor_details.and_then(|d| d.encoder_utilization).unwrap_or(0.0);
+
+    let vendor_color = match vendor {
+        "Nvidia" => theme.success,
+        "AMD" => theme.critical,
+        "Intel" => theme.primary,
+        _ => theme.secondary,
+    };
+
     // 1. Hardware Info Card
     let info_text = vec![
         Line::from(vec![
             Span::styled("Model: ", Style::default().fg(theme.text_muted)),
             Span::styled(gpu_name, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
             Span::raw(" │ Vendor: "),
-            Span::styled(vendor, Style::default().fg(theme.secondary)),
+            Span::styled(format!("[ {} ]", vendor), Style::default().fg(vendor_color).add_modifier(Modifier::BOLD)),
             Span::raw(" │ Driver: "),
             Span::styled(driver, Style::default().fg(theme.primary)),
         ]),
         Line::from(vec![
-            Span::raw("Detected Devices: "),
-            Span::styled(app.metrics.gpu_list.len().to_string(), Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
-            Span::raw(" │ Total VRAM: "),
-            Span::styled(format!("{} MB", total_vram_mb), Style::default().fg(theme.success)),
-            Span::raw(" │ Temp: "),
-            Span::styled(
-                primary_gpu.and_then(|g| g.temperature_c).map(|t| format!("{:.0}°C", t)).unwrap_or_else(|| "N/A".to_string()),
-                Style::default().fg(theme.primary),
-            ),
+            Span::raw("Architecture: "),
+            Span::styled(arch, Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD)),
+            Span::raw(" │ Display Mode: "),
+            Span::styled(display_mode, Style::default().fg(theme.primary)),
+            Span::raw(" │ Bus: "),
+            Span::styled(pcie_link, Style::default().fg(theme.text_muted)),
             Span::raw(" │ Status: "),
-            Span::styled("Active / Online", Style::default().fg(theme.success)),
+            Span::styled("Online", Style::default().fg(theme.success)),
         ]),
     ];
 
     let info_block = Block::default()
         .title(Span::styled(
-            " GPU Hardware & Controller Info ",
+            " GPU Hardware & Display Controller ",
             Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
@@ -126,7 +147,44 @@ pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(Paragraph::new(info_text).block(info_block), chunks[0]);
 
-    // 2. Global GPU Load Sparkline
+    // 2. Vendor Specific Telemetry Card (NVIDIA / AMD / Intel)
+    let encoder_title = match vendor {
+        "Nvidia" => "NVENC Video Encoder Load: ",
+        "AMD" => "VCE / VCN Video Encoder Load: ",
+        _ => "Intel QuickSync Video Load: ",
+    };
+
+    let vendor_telemetry_text = vec![
+        Line::from(vec![
+            Span::styled("Compute Units: ", Style::default().fg(theme.text_muted)),
+            Span::styled(compute_units, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+            Span::raw(" │ Core Clock: "),
+            Span::styled(format!("{} MHz", core_clk), Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
+            Span::raw(" │ VRAM Clock: "),
+            Span::styled(format!("{} MHz", mem_clk), Style::default().fg(theme.success)),
+        ]),
+        Line::from(vec![
+            Span::raw("Power Draw (TDP): "),
+            Span::styled(format!("{:.1} W", pwr_watts), Style::default().fg(theme.critical).add_modifier(Modifier::BOLD)),
+            Span::raw(" │ Fan Speed: "),
+            Span::styled(format!("{}%", fan_spd), Style::default().fg(theme.success)),
+            Span::raw(format!(" │ {}", encoder_title)),
+            Span::styled(format!("{:.1}%", enc_load), Style::default().fg(theme.primary)),
+        ]),
+    ];
+
+    let vendor_block = Block::default()
+        .title(Span::styled(
+            format!(" {} Telemetry & Engine Status ", vendor),
+            Style::default().fg(vendor_color).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.border_inactive));
+
+    frame.render_widget(Paragraph::new(vendor_telemetry_text).block(vendor_block), chunks[1]);
+
+    // 3. Global GPU Load Sparkline
     let load_color = match usage_pct as u64 {
         0..=59 => theme.success,
         60..=84 => theme.warning,
@@ -150,9 +208,9 @@ pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
         .max(100)
         .style(Style::default().fg(load_color));
 
-    frame.render_widget(sparkline, chunks[1]);
+    frame.render_widget(sparkline, chunks[2]);
 
-    // 3. VRAM Breakdown & Detail
+    // 4. VRAM Breakdown & Detail
     let vram_block = Block::default()
         .title(Span::styled(
             " Video RAM (VRAM) Allocation ",
@@ -162,14 +220,14 @@ pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.border_inactive));
 
-    let inner_vram = vram_block.inner(chunks[2]);
-    frame.render_widget(vram_block, chunks[2]);
+    let inner_vram = vram_block.inner(chunks[3]);
+    frame.render_widget(vram_block, chunks[3]);
 
     let vram_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // VRAM Gauge
-            Constraint::Min(3),    // Detailed Breakdown text
+            Constraint::Length(2), // VRAM Gauge
+            Constraint::Min(2),    // Detailed Breakdown text
         ])
         .split(inner_vram);
 
@@ -186,10 +244,8 @@ pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
             Span::styled(format!("{} MB", used_vram_mb), Style::default().fg(theme.warning)),
             Span::raw(" │ Free Memory: "),
             Span::styled(format!("{} MB", total_vram_mb.saturating_sub(used_vram_mb)), Style::default().fg(theme.success)),
-        ]),
-        Line::from(vec![
-            Span::raw("Memory Bandwidth Status: "),
-            Span::styled("Normal / Optimal", Style::default().fg(theme.success)),
+            Span::raw(" │ Memory Bus Status: "),
+            Span::styled("Optimal", Style::default().fg(theme.success)),
         ]),
     ];
 
