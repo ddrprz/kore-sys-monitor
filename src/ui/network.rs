@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::Span,
-    widgets::{Block, BorderType, Borders, Sparkline},
+    widgets::{Block, BorderType, Borders, Cell, Row, Sparkline, Table},
     Frame,
 };
 
@@ -22,33 +22,80 @@ fn format_net_bytes(bytes: u64) -> String {
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let theme = &app.theme;
 
-    let block = Block::default()
+    let outer_block = Block::default()
         .title(Span::styled(
-            " Network Bandwidth ",
+            " Network & Adapters ",
             Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.border_inactive));
 
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let inner = outer_block.inner(area);
+    frame.render_widget(outer_block, area);
+
+    if inner.height < 6 {
+        return;
+    }
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Min(1),
+            Constraint::Min(4),    // Adapters Table
+            Constraint::Length(3), // RX Sparkline
+            Constraint::Length(3), // TX Sparkline
         ])
-        .margin(1)
         .split(inner);
 
-    // RX Sparkline
+    // 1. Network Adapters Table
+    let header_cells = ["Adapter / Interface", "Status", "RX Speed", "TX Speed", "Total RX", "Total TX"]
+        .iter()
+        .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
+    let header = Row::new(header_cells).height(1);
+
+    let rows = app.metrics.network_interfaces.iter().take(6).map(|iface| {
+        let status_str = if iface.is_up { "UP" } else { "DOWN" };
+        let status_color = if iface.is_up { theme.success } else { theme.text_muted };
+
+        Row::new(vec![
+            Cell::from(iface.name.clone()).style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from(status_str).style(Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+            Cell::from(format!("{:.1} KB/s", iface.rx_rate_kbs)).style(Style::default().fg(theme.success)),
+            Cell::from(format!("{:.1} KB/s", iface.tx_rate_kbs)).style(Style::default().fg(theme.secondary)),
+            Cell::from(format_net_bytes(iface.rx_bytes)),
+            Cell::from(format_net_bytes(iface.tx_bytes)),
+        ])
+    });
+
+    let adapters_table = Table::new(
+        rows,
+        [
+            Constraint::Min(20),
+            Constraint::Length(8),
+            Constraint::Length(12),
+            Constraint::Length(12),
+            Constraint::Length(12),
+            Constraint::Length(12),
+        ],
+    )
+    .header(header)
+    .block(
+        Block::default()
+            .title(Span::styled(
+                " Active Network Adapters ",
+                Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD),
+            ))
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(theme.border_inactive)),
+    );
+
+    frame.render_widget(adapters_table, chunks[0]);
+
+    // 2. RX Sparkline
     let rx_data: Vec<u64> = app.metrics.rx_history.iter().copied().collect();
     let rx_block = Block::default().title(Span::styled(
         format!(
-            " RX: {:.2} KB/s (Total: {}) ",
+            " Global RX: {:.2} KB/s (Total: {}) ",
             app.metrics.rx_rate_kbs,
             format_net_bytes(app.metrics.total_rx_bytes)
         ),
@@ -60,13 +107,13 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .data(&rx_data)
         .style(Style::default().fg(theme.success));
 
-    frame.render_widget(rx_sparkline, chunks[0]);
+    frame.render_widget(rx_sparkline, chunks[1]);
 
-    // TX Sparkline
+    // 3. TX Sparkline
     let tx_data: Vec<u64> = app.metrics.tx_history.iter().copied().collect();
     let tx_block = Block::default().title(Span::styled(
         format!(
-            " TX: {:.2} KB/s (Total: {}) ",
+            " Global TX: {:.2} KB/s (Total: {}) ",
             app.metrics.tx_rate_kbs,
             format_net_bytes(app.metrics.total_tx_bytes)
         ),
@@ -78,5 +125,5 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .data(&tx_data)
         .style(Style::default().fg(theme.secondary));
 
-    frame.render_widget(tx_sparkline, chunks[1]);
+    frame.render_widget(tx_sparkline, chunks[2]);
 }

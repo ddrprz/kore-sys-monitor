@@ -14,12 +14,24 @@ pub struct ProcessInfo {
 
 #[derive(Debug, Clone)]
 pub struct DiskInfo {
+    pub name: String,
     pub mount_point: String,
+    pub disk_kind: String,
     pub file_system: String,
     pub total_space: u64,
     pub used_space: u64,
     pub free_space: u64,
     pub usage_percent: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct NetworkInterfaceInfo {
+    pub name: String,
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
+    pub rx_rate_kbs: f64,
+    pub tx_rate_kbs: f64,
+    pub is_up: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +79,7 @@ pub struct SystemMetrics {
     pub swap_used: u64,
     pub swap_total: u64,
     pub disk_list: Vec<DiskInfo>,
+    pub network_interfaces: Vec<NetworkInterfaceInfo>,
     pub rx_rate_kbs: f64,
     pub tx_rate_kbs: f64,
     pub rx_history: VecDeque<u64>,
@@ -128,6 +141,7 @@ impl SystemMetrics {
             swap_used: 0,
             swap_total: 0,
             disk_list: Vec::new(),
+            network_interfaces: Vec::new(),
             rx_rate_kbs: 0.0,
             tx_rate_kbs: 0.0,
             rx_history: VecDeque::with_capacity(max_history_len),
@@ -173,11 +187,13 @@ impl SystemMetrics {
 
         // Disks
         self.disks.refresh(true);
+        let physical_disks = detect_physical_disks();
         self.disk_list = self
             .disks
             .list()
             .iter()
-            .map(|disk| {
+            .enumerate()
+            .map(|(idx, disk)| {
                 let total = disk.total_space();
                 let free = disk.available_space();
                 let used = total.saturating_sub(free);
@@ -186,8 +202,11 @@ impl SystemMetrics {
                 } else {
                     0.0
                 };
+                let (model_name, kind_str) = resolve_disk_info(disk, &physical_disks, idx);
                 DiskInfo {
+                    name: model_name,
                     mount_point: disk.mount_point().to_string_lossy().to_string(),
+                    disk_kind: kind_str,
                     file_system: disk.file_system().to_string_lossy().to_string(),
                     total_space: total,
                     used_space: used,
@@ -201,11 +220,45 @@ impl SystemMetrics {
         self.networks.refresh(true);
         let mut curr_rx: u64 = 0;
         let mut curr_tx: u64 = 0;
+        let mut ifaces = Vec::new();
 
-        for (_iface, network) in &self.networks {
-            curr_rx += network.total_received();
-            curr_tx += network.total_transmitted();
+        for (iface_name, network) in &self.networks {
+            let rx = network.total_received();
+            let tx = network.total_transmitted();
+            let rx_rec = network.received();
+            let tx_rec = network.transmitted();
+
+            curr_rx += rx;
+            curr_tx += tx;
+
+            let rx_kbs = if elapsed_secs > 0.0 {
+                (rx_rec as f64 / 1024.0) / elapsed_secs
+            } else {
+                0.0
+            };
+            let tx_kbs = if elapsed_secs > 0.0 {
+                (tx_rec as f64 / 1024.0) / elapsed_secs
+            } else {
+                0.0
+            };
+
+            let is_up = rx > 0 || tx > 0 || network.packets_received() > 0 || network.packets_transmitted() > 0;
+
+            ifaces.push(NetworkInterfaceInfo {
+                name: iface_name.clone(),
+                rx_bytes: rx,
+                tx_bytes: tx,
+                rx_rate_kbs: rx_kbs,
+                tx_rate_kbs: tx_kbs,
+                is_up,
+            });
         }
+
+        ifaces.sort_by(|a, b| {
+            b.is_up.cmp(&a.is_up).then_with(|| (b.rx_bytes + b.tx_bytes).cmp(&(a.rx_bytes + a.tx_bytes)))
+        });
+
+        self.network_interfaces = ifaces;
 
         self.total_rx_bytes = curr_rx;
         self.total_tx_bytes = curr_tx;
@@ -705,6 +758,142 @@ fn detect_ram_details() -> RamDetails {
     }
 }
 
+fn detect_physical_disks() -> Vec<(String, String)> {
+    let mut results = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        if let Ok(output) = Command::new("powershell")
+            .args(&[
+                "-NoProfile",
+                "-Command",
+                "Get-PhysicalDisk | Select-Object FriendlyName, MediaType, BusType | Format-Table -HideTableHeaders"
+            ])
+            .output()
+        {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout);
+                for line in text.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            let bus_or_type = parts.last().copied().unwrap_or("");
+                            let media_type = parts.get(parts.len().saturating_sub(2)).copied().unwrap_or("");
+                            let model_parts = &parts[..parts.len().saturating_sub(2)];
+                            let model = model_parts.join(" ");
+
+                            let kind = if bus_or_type.to_lowercase().contains("nvme") || model.to_lowercase().contains("nvme") {
+                                "NVMe SSD".to_string()
+                            } else if media_type.to_lowercase().contains("ssd") || model.to_lowercase().contains("ssd") {
+                                "SSD".to_string()
+                            } else if media_type.to_lowercase().contains("hdd") || model.to_lowercase().contains("hdd") {
+                                "HDD".to_string()
+                            } else {
+                                "Fixed Disk".to_string()
+                            };
+
+                            let display_model = if model.is_empty() { trimmed.to_string() } else { model };
+                            results.push((display_model, kind));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::fs;
+        if let Ok(entries) = fs::read_dir("/sys/block") {
+            for entry in entries.flatten() {
+                let dev_name = entry.file_name().to_string_lossy().to_string();
+                if dev_name.starts_with("loop") || dev_name.starts_with("ram") || dev_name.starts_with("sr") {
+                    continue;
+                }
+                let model_path = entry.path().join("device/model");
+                let rot_path = entry.path().join("queue/rotational");
+
+                let model = fs::read_to_string(model_path)
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|_| dev_name.clone());
+
+                let is_rotational = fs::read_to_string(rot_path)
+                    .map(|s| s.trim() == "1")
+                    .unwrap_or(true);
+
+                let kind = if dev_name.contains("nvme") || model.to_lowercase().contains("nvme") {
+                    "NVMe SSD".to_string()
+                } else if !is_rotational {
+                    "SSD".to_string()
+                } else {
+                    "HDD".to_string()
+                };
+
+                results.push((model, kind));
+            }
+        }
+    }
+
+    results
+}
+
+fn resolve_disk_info(disk: &sysinfo::Disk, physical_disks: &[(String, String)], index: usize) -> (String, String) {
+    let sys_name = disk.name().to_string_lossy().to_string();
+    let mount_str = disk.mount_point().to_string_lossy().to_string();
+    let fs_str = disk.file_system().to_string_lossy().to_string();
+
+    let is_nvme = sys_name.to_lowercase().contains("nvme")
+        || mount_str.to_lowercase().contains("nvme")
+        || fs_str.to_lowercase().contains("nvme");
+
+    let is_m2 = sys_name.to_lowercase().contains("m.2")
+        || mount_str.to_lowercase().contains("m.2");
+
+    let default_kind = match disk.kind() {
+        sysinfo::DiskKind::SSD => {
+            if is_nvme {
+                "NVMe SSD".to_string()
+            } else if is_m2 {
+                "M.2 SSD".to_string()
+            } else {
+                "SSD".to_string()
+            }
+        }
+        sysinfo::DiskKind::HDD => "HDD".to_string(),
+        _ => {
+            if is_nvme {
+                "NVMe SSD".to_string()
+            } else if is_m2 {
+                "M.2 SSD".to_string()
+            } else if sys_name.to_lowercase().contains("ssd") {
+                "SSD".to_string()
+            } else if sys_name.to_lowercase().contains("hdd") {
+                "HDD".to_string()
+            } else {
+                "Fixed Disk".to_string()
+            }
+        }
+    };
+
+    if let Some((model, kind)) = physical_disks.get(index) {
+        let final_kind = if (kind == "Fixed Disk" || kind.is_empty()) && default_kind != "Fixed Disk" {
+            default_kind
+        } else {
+            kind.clone()
+        };
+        (model.clone(), final_kind)
+    } else {
+        let model = if !sys_name.is_empty() && sys_name != "Local Fixed Disk" && sys_name != "Disque local" {
+            sys_name
+        } else {
+            format!("Disk ({})", mount_str)
+        };
+        (model, default_kind)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -722,6 +911,21 @@ mod tests {
         assert!(!ram.memory_type.is_empty());
         assert!(!ram.speed_mhz.is_empty());
         assert!(!ram.manufacturer.is_empty());
+    }
+
+    #[test]
+    fn test_system_metrics_disks_and_networks() {
+        let metrics = SystemMetrics::new(10);
+        // Ensure disk list populates disk_kind and name correctly
+        for disk in &metrics.disk_list {
+            assert!(!disk.name.is_empty());
+            assert!(!disk.disk_kind.is_empty());
+            assert!(!disk.mount_point.is_empty());
+        }
+        // Ensure network interfaces populates interface names
+        for iface in &metrics.network_interfaces {
+            assert!(!iface.name.is_empty());
+        }
     }
 }
 
