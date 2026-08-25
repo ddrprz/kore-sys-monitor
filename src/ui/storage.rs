@@ -15,7 +15,7 @@ fn format_bytes(bytes: u64) -> String {
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let theme = &app.theme;
 
-    let header_cells = ["Mount", "Type", "Total", "Used", "Free", "Use %"]
+    let header_cells = ["Mount", "Model / Device", "Type", "FS", "Total", "Used", "Free", "Use %"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
     let header = Row::new(header_cells).height(1);
@@ -27,8 +27,20 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             _ => theme.critical,
         };
 
+        let kind_color = if d.disk_kind.contains("NVMe") || d.disk_kind.contains("M.2") {
+            theme.primary
+        } else if d.disk_kind.contains("SSD") {
+            theme.success
+        } else if d.disk_kind.contains("HDD") {
+            theme.warning
+        } else {
+            theme.text_muted
+        };
+
         Row::new(vec![
-            Cell::from(d.mount_point.clone()),
+            Cell::from(d.mount_point.clone()).style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from(d.name.clone()),
+            Cell::from(d.disk_kind.clone()).style(Style::default().fg(kind_color).add_modifier(Modifier::BOLD)),
             Cell::from(d.file_system.clone()).style(Style::default().fg(theme.text_muted)),
             Cell::from(format_bytes(d.total_space)),
             Cell::from(format_bytes(d.used_space)),
@@ -40,19 +52,21 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let table = Table::new(
         rows,
         [
-            Constraint::Ratio(1, 4),
-            Constraint::Ratio(1, 6),
-            Constraint::Ratio(1, 6),
-            Constraint::Ratio(1, 6),
-            Constraint::Ratio(1, 6),
-            Constraint::Ratio(1, 12),
+            Constraint::Length(10),
+            Constraint::Min(18),
+            Constraint::Length(12),
+            Constraint::Length(8),
+            Constraint::Length(10),
+            Constraint::Length(10),
+            Constraint::Length(10),
+            Constraint::Length(8),
         ],
     )
     .header(header)
     .block(
         Block::default()
             .title(Span::styled(
-                " Disks & Mounts ",
+                " Storage & Mounts ",
                 Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
             ))
             .borders(Borders::ALL)

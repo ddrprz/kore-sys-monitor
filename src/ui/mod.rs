@@ -145,13 +145,23 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 fn render_storage_net(app: &App, frame: &mut Frame, area: Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
+    if area.height >= 26 {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+            .split(area);
 
-    storage::render(app, frame, chunks[0]);
-    network::render(app, frame, chunks[1]);
+        storage::render(app, frame, chunks[0]);
+        network::render(app, frame, chunks[1]);
+    } else {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(area);
+
+        storage::render(app, frame, chunks[0]);
+        network::render(app, frame, chunks[1]);
+    }
 }
 
 fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
