@@ -68,7 +68,7 @@ pub fn render_overview_disks(app: &App, frame: &mut Frame, area: Rect) {
 pub fn render_mounts_table(app: &App, frame: &mut Frame, area: Rect) {
     let theme = &app.theme;
 
-    let header_cells = ["Mount", "Model / Device", "Type", "Health", "FS", "Total", "Used", "Free", "Use %"]
+    let header_cells = ["Mount", "Model / Device", "Type", "FS", "Total", "Used", "Free", "Use %"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
     let header = Row::new(header_cells).height(1);
@@ -90,20 +90,10 @@ pub fn render_mounts_table(app: &App, frame: &mut Frame, area: Rect) {
             theme.text_muted
         };
 
-        let pct_val = d.health.trim_end_matches('%').parse::<u32>().unwrap_or(100);
-        let health_color = if pct_val >= 90 {
-            theme.success
-        } else if pct_val >= 70 {
-            theme.warning
-        } else {
-            theme.critical
-        };
-
         Row::new(vec![
             Cell::from(d.mount_point.clone()).style(Style::default().add_modifier(Modifier::BOLD)),
             Cell::from(d.name.clone()),
             Cell::from(d.disk_kind.clone()).style(Style::default().fg(kind_color).add_modifier(Modifier::BOLD)),
-            Cell::from(d.health.clone()).style(Style::default().fg(health_color).add_modifier(Modifier::BOLD)),
             Cell::from(d.file_system.clone()).style(Style::default().fg(theme.text_muted)),
             Cell::from(format_bytes(d.total_space)),
             Cell::from(format_bytes(d.used_space)),
@@ -117,13 +107,12 @@ pub fn render_mounts_table(app: &App, frame: &mut Frame, area: Rect) {
         [
             Constraint::Length(7),
             Constraint::Min(16),
-            Constraint::Length(9),
+            Constraint::Length(10),
             Constraint::Length(8),
-            Constraint::Length(7),
-            Constraint::Length(9),
-            Constraint::Length(9),
-            Constraint::Length(9),
-            Constraint::Length(7),
+            Constraint::Length(10),
+            Constraint::Length(10),
+            Constraint::Length(10),
+            Constraint::Length(8),
         ],
     )
     .header(header)
@@ -191,7 +180,7 @@ pub fn render_smart_table(app: &App, frame: &mut Frame, area: Rect) {
         rows,
         [
             Constraint::Min(20),
-            Constraint::Length(16),
+            Constraint::Length(14),
             Constraint::Length(8),
             Constraint::Length(16),
             Constraint::Length(12),
@@ -204,7 +193,7 @@ pub fn render_smart_table(app: &App, frame: &mut Frame, area: Rect) {
     .block(
         Block::default()
             .title(Span::styled(
-                " Disk Health & SMART (CrystalDiskInfo) ",
+                " Disk Health & SMART ",
                 Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD),
             ))
             .borders(Borders::ALL)
