@@ -37,8 +37,8 @@
 ### A. Estructura General (Screen Wireframe)
 
 ```
-╭─ kore-sys-monitor v0.1.0 ──────────────────── Host: arch-linux │ Kernel: 6.10.3 │ Uptime: 4h 12m ─╮
-│ [1] Overview  │  [2] Processes  │  [3] Storage & Net  │  [4] CPU Detail                        │
+╭─ kore-sys-monitor v0.3.0 ──────────────────── Host: arch-linux │ Kernel: 6.10.3 │ Uptime: 4h 12m ─╮
+│ [1] Overview  │  [2] Processes  │  [3] Storage & Net  │  [4] CPU Detail  │  [5] GPU Detail         │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ ┌─ CPU Global [ 38.5% ] ─────────────────────┐ ┌─ Memory & Swap ──────────────────────────────┐ │
 │ │ 3.8GHz  [████████████░░░░░░░░░░░░░░] 38%   │ │ RAM:  11.4GB / 31.8GB [████████░░░░░░░] 35.8% │ │
@@ -56,7 +56,7 @@
 │ │  892   ddrprz    kore-sys-monitor 1.5%  0.4%   Running ./target/release/kore-sys-monitor     │ │
 │ └─────────────────────────────────────────────────────────────────────────────────────────────┘ │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ [Tab] Cambiar Vista │ [/] Buscar │ [k] Matar Proceso │ [s] Ordenar │ [r] Invertir │ [q] Salir  │
+│ [Tab] Vista │ [/] Buscar │ [s] Ordenar │ [r] Invertir │ [t] Tema │ [Del] Matar │ [?] Ayuda │ [q] Salir │
 ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -82,13 +82,13 @@
 - **Pantalla Pequeña (< 80 col / < 24 filas)**:
   - Oculta descripciones largas de comandos en la tabla de procesos.
   - Colapsa gráficos detallados de red a texto resumen.
-  - El menú de pestañas pasa a modo compacto (`1:Over 2:Proc 3:Disk 4:CPU`).
+  - El menú de pestañas pasa a modo compacto (`1:Over 2:Proc 3:Disk 4:CPU 5:GPU`).
 
 - **Pantalla Mediana (80-120 col / 24-40 filas)**:
   - Layout estándar de 2 columnas para métricas de hardware + tabla inferior para procesos.
 
 - **Pantalla Ultra-Wide (> 120 col / > 40 filas)**:
-  - Layout de 3 columnas: CPU per-core a la izquierda, Memoria y Red al centro, Discos y Procesos a la derecha.
+  - Layout de 3 columnas: CPU per-core a la izquierda, Memoria, GPU y Red al centro, Discos y Procesos a la derecha.
 
 ---
 
@@ -96,17 +96,18 @@
 
 | Tecla / Combinación | Modo / Ámbito | Acción |
 | :--- | :--- | :--- |
-| `Tab` / `Shift+Tab` | Global | Avanzar / Retroceder pestaña. |
-| `1`, `2`, `3`, `4` | Global | Selección directa de pestaña. |
+| `Tab` / `Shift+Tab` | Global | Avanzar / Retroceder entre pestañas (`Overview`, `Processes`, `Storage & Net`, `CPU Detail`, `GPU Detail`). |
+| `1`, `2`, `3`, `4`, `5` | Global | Selección directa de pestaña. |
 | `j` / `Down` | Tabla Procesos | Mover selección al siguiente proceso. |
 | `k` / `Up` | Tabla Procesos | Mover selección al proceso anterior. |
-| `PageDown` / `PageUp`| Tabla Procesos | Desplazamiento por página rápida. |
+| `PageDown` / `PageUp`| Tabla Procesos | Desplazamiento rápido por bloques de procesos (10 en 10). |
 | `Home` / `End` | Tabla Procesos | Ir al primer / último proceso de la lista. |
 | `/` | Tabla Procesos | Entrar en modo Búsqueda/Filtro interactivo. |
 | `Esc` | Búsqueda/Modal | Cancelar filtro actual o cerrar ventana modal. |
 | `s` | Tabla Procesos | Ciclar columna de ordenación (CPU% → MEM% → PID → NAME). |
 | `r` | Tabla Procesos | Invertir el sentido de ordenación (Asc / Desc). |
-| `k` (o `Delete`) | Proceso seleccionado | Abrir modal de confirmación para terminar proceso. |
+| `t` | Global | Ciclar el tema visual de colores. |
+| `Del` / `Delete` / `K`| Proceso seleccionado | Abrir modal de confirmación para terminar proceso. |
 | `?` | Global | Abrir modal con ayuda y lista de atajos. |
 | `q` / `Ctrl+C` | Global | Salir de la aplicación restaurando la terminal. |
 
