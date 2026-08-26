@@ -80,12 +80,6 @@ pub fn render(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
                 Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
             ),
             Span::styled(" │ ", Style::default().fg(theme.text_muted)),
-            Span::raw("Kernel: "),
-            Span::styled(&app.metrics.kernel_version, Style::default().fg(theme.primary)),
-            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
-            Span::raw("Arch: "),
-            Span::styled(&app.metrics.cpu_arch, Style::default().fg(theme.secondary)),
-            Span::styled(" │ ", Style::default().fg(theme.text_muted)),
             Span::raw("Uptime: "),
             Span::styled(
                 format!("{}h {}m", uptime_hours, uptime_mins),

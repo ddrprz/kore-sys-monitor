@@ -27,14 +27,25 @@ pub struct DiskInfo {
 
 #[derive(Debug, Clone)]
 pub struct NetworkInterfaceInfo {
-    #[allow(dead_code)]
     pub name: String,
     pub model: String,
+    pub ip_address: String,
+    pub gateway: String,
+    pub dns_servers: String,
     pub rx_bytes: u64,
     pub tx_bytes: u64,
     pub rx_rate_kbs: f64,
     pub tx_rate_kbs: f64,
     pub is_up: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NetworkAdapterConfig {
+    pub name: String,
+    pub model: String,
+    pub ip_address: String,
+    pub gateway: String,
+    pub dns_servers: String,
 }
 
 #[derive(Debug, Clone)]
@@ -82,7 +93,9 @@ pub struct SystemMetrics {
     networks: Networks,
     pub host_name: String,
     pub os_name: String,
+    #[allow(dead_code)]
     pub kernel_version: String,
+    #[allow(dead_code)]
     pub cpu_arch: String,
     pub cpu_name: String,
     pub cpu_temp_c: Option<f32>,
@@ -110,7 +123,7 @@ pub struct SystemMetrics {
     prev_rx_total: u64,
     prev_tx_total: u64,
     cached_physical_disks: Vec<(String, String, String)>,
-    cached_network_adapter_models: std::collections::HashMap<String, String>,
+    cached_network_adapters: std::collections::HashMap<String, NetworkAdapterConfig>,
 }
 
 impl SystemMetrics {
@@ -140,7 +153,7 @@ impl SystemMetrics {
         let motherboard = detect_motherboard();
         let ram_details = detect_ram_details();
         let cached_physical_disks = detect_physical_disks();
-        let cached_network_adapter_models = detect_network_adapter_models();
+        let cached_network_adapters = detect_network_adapter_details();
 
         let mut metrics = Self {
             sys,
@@ -176,7 +189,7 @@ impl SystemMetrics {
             prev_rx_total: 0,
             prev_tx_total: 0,
             cached_physical_disks,
-            cached_network_adapter_models,
+            cached_network_adapters,
         };
 
         metrics.refresh(1.0);
@@ -265,16 +278,60 @@ impl SystemMetrics {
                 0.0
             };
 
-            let is_up = rx > 0 || tx > 0 || network.packets_received() > 0 || network.packets_transmitted() > 0;
-
-            let model_desc = self.cached_network_adapter_models
+            let cached_cfg = self
+                .cached_network_adapters
                 .get(iface_name)
-                .cloned()
+                .or_else(|| {
+                    self.cached_network_adapters.values().find(|c| {
+                        !c.name.is_empty() && (iface_name.contains(&c.name) || c.name.contains(iface_name))
+                            || !c.model.is_empty() && (iface_name.contains(&c.model) || c.model.contains(iface_name))
+                    })
+                });
+
+            let sysinfo_ips: Vec<String> = network
+                .ip_networks()
+                .iter()
+                .map(|ip_net| ip_net.addr.to_string())
+                .collect();
+
+            let ip_address = cached_cfg
+                .map(|c| c.ip_address.clone())
+                .filter(|ip| !ip.is_empty())
+                .unwrap_or_else(|| {
+                    if !sysinfo_ips.is_empty() {
+                        sysinfo_ips.join(", ")
+                    } else {
+                        "-".to_string()
+                    }
+                });
+
+            let gateway = cached_cfg
+                .map(|c| c.gateway.clone())
+                .filter(|gw| !gw.is_empty())
+                .unwrap_or_else(|| "-".to_string());
+
+            let dns_servers = cached_cfg
+                .map(|c| c.dns_servers.clone())
+                .filter(|dns| !dns.is_empty())
+                .unwrap_or_else(|| "-".to_string());
+
+            let model_desc = cached_cfg
+                .map(|c| c.model.clone())
+                .filter(|m| !m.is_empty())
                 .unwrap_or_else(|| format!("Network Adapter ({})", iface_name));
+
+            let is_up = (ip_address != "-" && !ip_address.is_empty())
+                || rx > 0
+                || tx > 0
+                || network.packets_received() > 0
+                || network.packets_transmitted() > 0;
 
             ifaces.push(NetworkInterfaceInfo {
                 name: iface_name.clone(),
                 model: model_desc,
+                ip_address,
+                gateway,
+                dns_servers,
                 rx_bytes: rx,
                 tx_bytes: tx,
                 rx_rate_kbs: rx_kbs,
@@ -283,8 +340,31 @@ impl SystemMetrics {
             });
         }
 
+        // Add any cached adapter with active IP that wasn't already in sysinfo list
+        for cfg in self.cached_network_adapters.values() {
+            if !cfg.ip_address.is_empty()
+                && !ifaces.iter().any(|i| i.ip_address == cfg.ip_address || i.name == cfg.name || i.model == cfg.model)
+            {
+                ifaces.push(NetworkInterfaceInfo {
+                    name: cfg.name.clone(),
+                    model: cfg.model.clone(),
+                    ip_address: cfg.ip_address.clone(),
+                    gateway: if cfg.gateway.is_empty() { "-".to_string() } else { cfg.gateway.clone() },
+                    dns_servers: if cfg.dns_servers.is_empty() { "-".to_string() } else { cfg.dns_servers.clone() },
+                    rx_bytes: 0,
+                    tx_bytes: 0,
+                    rx_rate_kbs: 0.0,
+                    tx_rate_kbs: 0.0,
+                    is_up: true,
+                });
+            }
+        }
+
         ifaces.sort_by(|a, b| {
-            b.is_up.cmp(&a.is_up).then_with(|| (b.rx_bytes + b.tx_bytes).cmp(&(a.rx_bytes + a.tx_bytes)))
+            b.is_up
+                .cmp(&a.is_up)
+                .then_with(|| (a.ip_address != "-").cmp(&(b.ip_address != "-")).reverse())
+                .then_with(|| (b.rx_bytes + b.tx_bytes).cmp(&(a.rx_bytes + a.tx_bytes)))
         });
 
         self.network_interfaces = ifaces;
@@ -431,15 +511,15 @@ fn detect_gpus() -> Vec<GpuInfo> {
     {
         use std::process::Command;
         if let Ok(output) = Command::new("powershell")
-            .args(&[
+            .args([
                 "-NoProfile",
                 "-Command",
                 "Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion, VideoProcessor, CurrentHorizontalResolution, CurrentVerticalResolution, CurrentRefreshRate | Format-Table -HideTableHeaders"
             ])
             .output()
+            && output.status.success()
         {
-            if output.status.success() {
-                let text = String::from_utf8_lossy(&output.stdout);
+            let text = String::from_utf8_lossy(&output.stdout);
                 for line in text.lines() {
                     let trimmed = line.trim();
                     if !trimmed.is_empty() {
@@ -511,7 +591,6 @@ fn detect_gpus() -> Vec<GpuInfo> {
                 }
             }
         }
-    }
 
     if gpus.is_empty() {
         gpus.push(GpuInfo {
@@ -619,15 +698,15 @@ fn detect_motherboard() -> MotherboardInfo {
     {
         use std::process::Command;
         if let Ok(output) = Command::new("powershell")
-            .args(&[
+            .args([
                 "-NoProfile",
                 "-Command",
                 "Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer, Product | Format-Table -HideTableHeaders"
             ])
             .output()
+            && output.status.success()
         {
-            if output.status.success() {
-                let text = String::from_utf8_lossy(&output.stdout);
+            let text = String::from_utf8_lossy(&output.stdout);
                 for line in text.lines() {
                     let trimmed = line.trim();
                     if !trimmed.is_empty() {
@@ -647,7 +726,6 @@ fn detect_motherboard() -> MotherboardInfo {
                 }
             }
         }
-    }
 
     #[cfg(target_os = "macos")]
     {
@@ -825,15 +903,15 @@ fn detect_ram_details() -> RamDetails {
     {
         use std::process::Command;
         if let Ok(output) = Command::new("powershell")
-            .args(&[
+            .args([
                 "-NoProfile",
                 "-Command",
                 "Get-CimInstance Win32_PhysicalMemory | Select-Object Manufacturer, Speed, SMBIOSMemoryType | Format-Table -HideTableHeaders"
             ])
             .output()
+            && output.status.success()
         {
-            if output.status.success() {
-                let text = String::from_utf8_lossy(&output.stdout);
+            let text = String::from_utf8_lossy(&output.stdout);
                 for line in text.lines() {
                     let trimmed = line.trim();
                     if !trimmed.is_empty() {
@@ -860,7 +938,6 @@ fn detect_ram_details() -> RamDetails {
                 }
             }
         }
-    }
 
     RamDetails {
         memory_type: "DDR RAM".to_string(),
@@ -876,40 +953,39 @@ fn detect_physical_disks() -> Vec<(String, String, String)> {
     {
         use std::process::Command;
         if let Ok(output) = Command::new("powershell")
-            .args(&[
+            .args([
                 "-NoProfile",
                 "-Command",
                 "Get-PhysicalDisk | Select-Object FriendlyName, MediaType, BusType, HealthStatus | Format-Table -HideTableHeaders"
             ])
             .output()
+            && output.status.success()
         {
-            if output.status.success() {
-                let text = String::from_utf8_lossy(&output.stdout);
-                for line in text.lines() {
-                    let trimmed = line.trim();
-                    if !trimmed.is_empty() {
-                        let parts: Vec<&str> = trimmed.split_whitespace().collect();
-                        if parts.len() >= 3 {
-                            let health = parts.last().copied().unwrap_or("Healthy");
-                            let bus_type = parts.get(parts.len().saturating_sub(2)).copied().unwrap_or("");
-                            let media_type = parts.get(parts.len().saturating_sub(3)).copied().unwrap_or("");
-                            let model_parts = &parts[..parts.len().saturating_sub(3)];
-                            let model = model_parts.join(" ");
+            let text = String::from_utf8_lossy(&output.stdout);
+            for line in text.lines() {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() {
+                    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                    if parts.len() >= 3 {
+                        let health = parts.last().copied().unwrap_or("Healthy");
+                        let bus_type = parts.get(parts.len().saturating_sub(2)).copied().unwrap_or("");
+                        let media_type = parts.get(parts.len().saturating_sub(3)).copied().unwrap_or("");
+                        let model_parts = &parts[..parts.len().saturating_sub(3)];
+                        let model = model_parts.join(" ");
 
-                            let kind = if bus_type.to_lowercase().contains("nvme") || model.to_lowercase().contains("nvme") {
-                                "NVMe SSD".to_string()
-                            } else if media_type.to_lowercase().contains("ssd") || model.to_lowercase().contains("ssd") {
-                                "SSD".to_string()
-                            } else if media_type.to_lowercase().contains("hdd") || model.to_lowercase().contains("hdd") {
-                                "HDD".to_string()
-                            } else {
-                                "Fixed Disk".to_string()
-                            };
+                        let kind = if bus_type.to_lowercase().contains("nvme") || model.to_lowercase().contains("nvme") {
+                            "NVMe SSD".to_string()
+                        } else if media_type.to_lowercase().contains("ssd") || model.to_lowercase().contains("ssd") {
+                            "SSD".to_string()
+                        } else if media_type.to_lowercase().contains("hdd") || model.to_lowercase().contains("hdd") {
+                            "HDD".to_string()
+                        } else {
+                            "Fixed Disk".to_string()
+                        };
 
-                            let display_model = if model.is_empty() { trimmed.to_string() } else { model };
-                            let health_str = if health.is_empty() { "Healthy".to_string() } else { health.to_string() };
-                            results.push((display_model, kind, health_str));
-                        }
+                        let display_model = if model.is_empty() { trimmed.to_string() } else { model };
+                        let health_str = if health.is_empty() { "Healthy".to_string() } else { health.to_string() };
+                        results.push((display_model, kind, health_str));
                     }
                 }
             }
@@ -1023,30 +1099,47 @@ fn resolve_disk_info(disk: &sysinfo::Disk, physical_disks: &[(String, String, St
     }
 }
 
-fn detect_network_adapter_models() -> std::collections::HashMap<String, String> {
+fn detect_network_adapter_details() -> std::collections::HashMap<String, NetworkAdapterConfig> {
     let mut map = std::collections::HashMap::new();
 
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
         if let Ok(output) = Command::new("powershell")
-            .args(&[
+            .args([
                 "-NoProfile",
                 "-Command",
-                "Get-NetAdapter | Select-Object Name, InterfaceDescription | Format-Table -HideTableHeaders"
+                "Get-NetIPConfiguration | ForEach-Object { \"$($_.InterfaceAlias)###$($_.InterfaceDescription)###$($_.IPv4Address.IPAddress -join ', ')###$($_.IPv4DefaultGateway.NextHop -join ', ')###$($_.DNSServer.ServerAddresses -join ', ')\" }"
             ])
             .output()
+            && output.status.success()
         {
-            if output.status.success() {
-                let text = String::from_utf8_lossy(&output.stdout);
-                for line in text.lines() {
-                    let trimmed = line.trim();
-                    if !trimmed.is_empty() {
-                        let parts: Vec<&str> = trimmed.split_whitespace().collect();
-                        if parts.len() >= 2 {
-                            let name = parts[0].to_string();
-                            let model = parts[1..].join(" ");
-                            map.insert(name, model);
+            let text = String::from_utf8_lossy(&output.stdout);
+            for line in text.lines() {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() {
+                    let parts: Vec<&str> = trimmed.split("###").collect();
+                    if parts.len() >= 2 {
+                        let alias = parts[0].trim().to_string();
+                        let desc = parts[1].trim().to_string();
+                        let ip = parts.get(2).copied().unwrap_or("").trim().to_string();
+                        let gw = parts.get(3).copied().unwrap_or("").trim().to_string();
+                        let dns = parts.get(4).copied().unwrap_or("").trim().to_string();
+
+                        let model = if desc.is_empty() { alias.clone() } else { desc.clone() };
+                        let cfg = NetworkAdapterConfig {
+                            name: alias.clone(),
+                            model,
+                            ip_address: ip,
+                            gateway: gw,
+                            dns_servers: dns,
+                        };
+
+                        if !alias.is_empty() {
+                            map.insert(alias.clone(), cfg.clone());
+                        }
+                        if !desc.is_empty() {
+                            map.insert(desc, cfg);
                         }
                     }
                 }
@@ -1057,16 +1150,41 @@ fn detect_network_adapter_models() -> std::collections::HashMap<String, String> 
     #[cfg(target_os = "linux")]
     {
         use std::fs;
+        let mut dns_servers = Vec::new();
+        if let Ok(resolv) = fs::read_to_string("/etc/resolv.conf") {
+            for line in resolv.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("nameserver") {
+                    if let Some(ip) = trimmed.split_whitespace().nth(1) {
+                        dns_servers.push(ip.to_string());
+                    }
+                }
+            }
+        }
+        let dns_str = dns_servers.join(", ");
+
         if let Ok(entries) = fs::read_dir("/sys/class/net") {
             for entry in entries.flatten() {
                 let iface_name = entry.file_name().to_string_lossy().to_string();
                 let vendor_path = entry.path().join("device/vendor");
                 let device_path = entry.path().join("device/device");
 
-                if let (Ok(v), Ok(d)) = (fs::read_to_string(vendor_path), fs::read_to_string(device_path)) {
-                    let model_desc = format!("PCI Adapter ({}:{})", v.trim(), d.trim());
-                    map.insert(iface_name, model_desc);
-                }
+                let model_desc = if let (Ok(v), Ok(d)) = (fs::read_to_string(vendor_path), fs::read_to_string(device_path)) {
+                    format!("PCI Adapter ({}:{})", v.trim(), d.trim())
+                } else {
+                    iface_name.clone()
+                };
+
+                map.insert(
+                    iface_name.clone(),
+                    NetworkAdapterConfig {
+                        name: iface_name,
+                        model: model_desc,
+                        ip_address: String::new(),
+                        gateway: String::new(),
+                        dns_servers: dns_str.clone(),
+                    },
+                );
             }
         }
     }
@@ -1102,9 +1220,13 @@ mod tests {
             assert!(!disk.disk_kind.is_empty());
             assert!(!disk.mount_point.is_empty());
         }
-        // Ensure network interfaces populates interface names
+        // Ensure network interfaces populates interface names and network metadata fields
         for iface in &metrics.network_interfaces {
             assert!(!iface.name.is_empty());
+            assert!(!iface.model.is_empty());
+            assert!(!iface.ip_address.is_empty());
+            assert!(!iface.gateway.is_empty());
+            assert!(!iface.dns_servers.is_empty());
         }
     }
 }
