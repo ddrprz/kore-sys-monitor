@@ -122,10 +122,14 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
         storage::render(app, frame, right_chunks[0]);
         processes::render(app, frame, right_chunks[1]);
     } else {
-        // Standard 2-row layout with CPU, Memory, GPU top row
+        // Standard layout with CPU, Memory, GPU top row, Storage & Disk Health middle row, Processes bottom
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(10), Constraint::Min(8)])
+            .constraints([
+                Constraint::Length(9), // CPU, RAM, GPU
+                Constraint::Length(8), // Storage Volumes & Disk Health
+                Constraint::Min(8),    // Top Processes
+            ])
             .split(area);
 
         let top_chunks = Layout::default()
@@ -140,7 +144,8 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
         cpu::render(app, frame, top_chunks[0]);
         memory::render(app, frame, top_chunks[1]);
         gpu::render_summary(app, frame, top_chunks[2]);
-        processes::render(app, frame, main_chunks[1]);
+        storage::render_overview_disks(app, frame, main_chunks[1]);
+        processes::render(app, frame, main_chunks[2]);
     }
 }
 
