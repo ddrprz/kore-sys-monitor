@@ -39,8 +39,9 @@
 | **FR-8** | **Filtro de Procesos** | Búsqueda dinámica en tiempo real al presionar `/` para filtrar por nombre o PID. | Alta |
 | **FR-9** | **Ordenamiento** | Cambio interactivo de columna de ordenación (CPU, Memoria, PID, Nombre) con `s` y `r`. | Alta |
 | **FR-10**| **Terminación (Kill)**| Ventana modal de confirmación al presionar `k` para enviar señal `SIGTERM` / `SIGKILL`. | Alta |
-| **FR-11**| **Pestañas & Nav** | Navegación entre vistas (Overview, Procesos, Red/Disco, CPU Detail) con `Tab` o `1-4`.| Alta |
+| **FR-11**| **Pestañas & Nav** | Navegación entre vistas (Overview, Procesos, Storage & Net, CPU Detail, GPU Detail) con `Tab` o `1-5`.| Alta |
 | **FR-12**| **Ayuda Modal** | Ventana emergente al presionar `?` detallando los atajos de teclado y ayuda. | Baja |
+| **FR-13**| **GPU Telemetry** | Telemetría multi-proveedor (NVIDIA, AMD, Intel) con VRAM, clocks, ventiladores, temperatura y potencia. | Alta |
 
 ---
 

@@ -82,7 +82,7 @@ pub fn render_help_modal(app: &App, frame: &mut Frame, area: Rect) {
         Line::from(Span::styled(" Atajos de Teclado ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))),
         Line::from(""),
         Line::from(vec![Span::styled(" Tab / Shift+Tab ", Style::default().fg(theme.warning)), Span::raw(" Navegar entre pestañas")]),
-        Line::from(vec![Span::styled(" 1, 2, 3, 4      ", Style::default().fg(theme.warning)), Span::raw(" Selección directa de pestaña")]),
+        Line::from(vec![Span::styled(" 1, 2, 3, 4, 5   ", Style::default().fg(theme.warning)), Span::raw(" Selección directa de pestaña")]),
         Line::from(vec![Span::styled(" j / k (Down/Up) ", Style::default().fg(theme.warning)), Span::raw(" Seleccionar proceso siguiente / anterior")]),
         Line::from(vec![Span::styled(" PgUp / PgDown   ", Style::default().fg(theme.warning)), Span::raw(" Desplazamiento rápido por lista")]),
         Line::from(vec![Span::styled(" Home / End      ", Style::default().fg(theme.warning)), Span::raw(" Ir al inicio / final de la lista")]),

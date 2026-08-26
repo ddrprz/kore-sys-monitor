@@ -14,10 +14,13 @@ pub fn render(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
 
     let mobo_str = format!("{} {}", app.metrics.motherboard.vendor, app.metrics.motherboard.model);
 
+    let app_title_short = concat!("kore-sys v", env!("CARGO_PKG_VERSION"), " ");
+    let app_title_full = concat!(" kore-sys-monitor v", env!("CARGO_PKG_VERSION"), " ");
+
     let header_text = if area.width < 90 {
         vec![
             Line::from(vec![
-                Span::styled("kore-sys v0.2.0 ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+                Span::styled(app_title_short, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
                 Span::styled("│ ", Style::default().fg(theme.text_muted)),
                 Span::raw("Host: "),
                 Span::styled(&app.metrics.host_name, Style::default().fg(theme.success)),
@@ -39,7 +42,7 @@ pub fn render(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
     } else if area.width < 140 {
         vec![
             Line::from(vec![
-                Span::styled("kore-sys v0.2.0 ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+                Span::styled(app_title_short, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
                 Span::styled("│ ", Style::default().fg(theme.text_muted)),
                 Span::raw("Host: "),
                 Span::styled(&app.metrics.host_name, Style::default().fg(theme.success)),
@@ -61,7 +64,7 @@ pub fn render(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
     } else {
         vec![Line::from(vec![
             Span::styled(
-                " kore-sys-monitor v0.2.0 ",
+                app_title_full,
                 Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
             ),
             Span::styled(" │ ", Style::default().fg(theme.text_muted)),

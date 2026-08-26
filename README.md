@@ -4,15 +4,17 @@
 
 ---
 
-## ✨ Características Principal
+## ✨ Características Principales
 
-- 🚀 **Bajo Consumo de Recursos**: Poca memoria RAM (< 15 MB) y uso mínimo de CPU.
+- 🚀 **Bajo Consumo de Recursos**: Poca memoria RAM (< 15 MB) y uso mínimo de CPU gracias a la recolección optimizada y caché de hardware.
 - 🎨 **Sistema de Temas Dinámicos**: Alterna entre **Cyber Cyan**, **Catppuccin Mocha**, **Dracula** y **Monochrome Matrix** en tiempo real presionando `t`.
 - 📐 **Diseño Responsivo (Breakpoints)**: Reorganización inteligente del layout para pantallas compactas, estándar y ultra-wide (3 columnas).
 - 🔍 **Búsqueda & Filtrado de Procesos**: Presiona `/` para filtrar procesos en tiempo real por nombre, PID o comando.
 - 📊 **Ordenamiento Interactivo**: Presiona `s` para cambiar la columna de ordenación (CPU, MEM, PID, Nombre) y `r` para invertir el orden.
 - ⚡ **Gestor de Procesos Integrado**: Modal interactivo de confirmación (`Del` / `K`) para terminar procesos (`SIGTERM`/`SIGKILL`).
 - 📈 **Detalle Extendido de CPU**: Pestaña dedicada `[4] CPU Detail` con desgloses por núcleo, métricas promedio/mínimas/máximas e historial Sparkline.
+- 🎮 **Telemetría Avanzada de GPU**: Pestaña dedicada `[5] GPU Detail` y resumen en Overview con soporte multi-proveedor (NVIDIA, AMD, Intel) para VRAM, clocks de núcleo/memoria, ventiladores, potencia (W), resolución/refresco y motores de cómputo/video.
+- 💾 **Almacenamiento y Red**: Pestaña `[3] Storage & Net` con clasificación de medios (NVMe/SSD/HDD), salud de disco en %, modelos de adaptadores de red y gráficos de tráfico RX/TX.
 - 🛡️ **Restauración Garantizada del Terminal**: Custom panic hook y destructores limpios que aseguran que el terminal nunca quede desconfigurado.
 
 ---
@@ -21,11 +23,11 @@
 
 | Tecla / Combinación | Acción |
 | :--- | :--- |
-| `Tab` / `Shift+Tab` | Avanzar / Retroceder entre pestañas (`Overview`, `Processes`, `Storage & Net`, `CPU Detail`). |
-| `1`, `2`, `3`, `4` | Selección directa de pestaña. |
+| `Tab` / `Shift+Tab` | Avanzar / Retroceder entre pestañas (`Overview`, `Processes`, `Storage & Net`, `CPU Detail`, `GPU Detail`). |
+| `1`, `2`, `3`, `4`, `5` | Selección directa de pestaña. |
 | `j` / `Down` | Mover selección al siguiente proceso. |
 | `k` / `Up` | Mover selección al proceso anterior. |
-| `PgUp` / `PgDown` | Desplazamiento por páginas de procesos. |
+| `PgUp` / `PgDown` | Desplazamiento por páginas de procesos (10 en 10). |
 | `Home` / `End` | Ir al primer / último proceso de la lista. |
 | `/` | Entrar en modo Búsqueda/Filtro de procesos. |
 | `s` | Cambiar columna de ordenación (CPU% → MEM% → PID → Name). |
