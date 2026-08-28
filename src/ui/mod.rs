@@ -227,12 +227,14 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
             Span::styled(" STATUS: ", Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
             Span::styled(msg, Style::default().fg(theme.primary)),
         ])
-    } else if area.width < 80 {
+    } else if area.width < 85 {
         Line::from(vec![
             Span::styled("[Tab]", Style::default().fg(theme.primary)),
             Span::raw("Nav │ "),
             Span::styled("[/]", Style::default().fg(theme.primary)),
             Span::raw("Search │ "),
+            Span::styled("[e]", Style::default().fg(theme.primary)),
+            Span::raw("Speed │ "),
             Span::styled("[t]", Style::default().fg(theme.primary)),
             Span::raw("Theme │ "),
             Span::styled("[Del]", Style::default().fg(theme.primary)),
@@ -246,6 +248,8 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
             Span::raw(" Vista  │ "),
             Span::styled("[/]", Style::default().fg(theme.primary)),
             Span::raw(" Buscar  │ "),
+            Span::styled("[e]", Style::default().fg(theme.primary)),
+            Span::raw(" SpeedTest  │ "),
             Span::styled("[s]", Style::default().fg(theme.primary)),
             Span::raw(" Ordenar  │ "),
             Span::styled("[r]", Style::default().fg(theme.primary)),

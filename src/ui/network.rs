@@ -1,9 +1,10 @@
 use crate::app::App;
+use crate::system::SpeedTestState;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Cell, Row, Sparkline, Table},
+    widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Sparkline, Table},
     Frame,
 };
 
@@ -24,7 +25,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 
     let outer_block = Block::default()
         .title(Span::styled(
-            " Network & Connected Adapters ",
+            " Network, Connected Adapters & Speed Test ",
             Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
@@ -38,15 +39,16 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         return;
     }
 
-    // Determine layout: side-by-side sparklines on wide screens
-    let is_wide_screen = inner.width >= 100;
-    let sparkline_height = if inner.height >= 16 { 4 } else { 3 };
+    // Determine layout: Adapters Table, Sparklines, and Speed Test section
+    let sparkline_height = if inner.height >= 22 { 4 } else { 3 };
+    let speed_test_height = if inner.height >= 18 { 6 } else if inner.height >= 12 { 5 } else { 4 };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(4),
-            Constraint::Length(sparkline_height),
+            Constraint::Min(4),                   // Adapters Table
+            Constraint::Length(sparkline_height),  // Traffic Sparklines
+            Constraint::Length(speed_test_height), // Speed Test Panel
         ])
         .split(inner);
 
@@ -196,6 +198,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(adapters_table, chunks[0]);
 
     // 2. Render Sparklines (Side-by-side on wide screens, stacked on narrow)
+    let is_wide_screen = inner.width >= 100;
     let rx_data: Vec<u64> = app.metrics.rx_history.iter().copied().collect();
     let tx_data: Vec<u64> = app.metrics.tx_history.iter().copied().collect();
 
@@ -243,5 +246,120 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 
         frame.render_widget(rx_sparkline, spark_rows[0]);
         frame.render_widget(tx_sparkline, spark_rows[1]);
+    }
+
+    // 3. Render Speed Test Section below Network
+    render_speed_test_panel(app, frame, chunks[2]);
+}
+
+pub fn render_speed_test_panel(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
+    let st = &app.speed_test;
+
+    let (status_icon, status_label, status_color) = match &st.state {
+        SpeedTestState::Idle => ("○", "LISTO / INACTIVO (Presiona [e] para iniciar)".to_string(), theme.primary),
+        SpeedTestState::TestingPing => ("⏳", "Midiendo Latencia (Ping / RTT)...".to_string(), theme.warning),
+        SpeedTestState::TestingDownload { progress_pct, current_mbps } => (
+            "⏳",
+            format!("Probando Descarga (↓ {:.1} Mbps - {}%)...", current_mbps, progress_pct),
+            theme.success,
+        ),
+        SpeedTestState::TestingUpload { progress_pct, current_mbps } => (
+            "⏳",
+            format!("Probando Subida (↑ {:.1} Mbps - {}%)...", current_mbps, progress_pct),
+            theme.secondary,
+        ),
+        SpeedTestState::Completed => {
+            let ago = st.last_tested_secs_ago.map(|s| format!("hace {}s", s)).unwrap_or_else(|| "reciente".to_string());
+            ("●", format!("COMPLETADO ({}) - Presiona [e] para repetir", ago), theme.success)
+        }
+        SpeedTestState::Failed(err) => ("✖", format!("ERROR ({}) - Presiona [e] para reintentar", err), theme.critical),
+    };
+
+    let block = Block::default()
+        .title(Span::styled(
+            " Network Speed Test [e] ",
+            Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(theme.border_inactive));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if inner.height < 2 {
+        return;
+    }
+
+    let ping_str = st.ping_ms.map(|p| format!("{:.1} ms", p)).unwrap_or_else(|| "-- ms".to_string());
+    let dl_str = st.download_mbps.map(|d| format!("{:.1} Mbps", d)).unwrap_or_else(|| "-- Mbps".to_string());
+    let ul_str = st.upload_mbps.map(|u| format!("{:.1} Mbps", u)).unwrap_or_else(|| "-- Mbps".to_string());
+    let server_str = format!("{} ({})", st.server_name, st.server_location);
+
+    if area.width >= 100 && inner.height >= 3 {
+        // Multi-card layout on wide views
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(2)])
+            .split(inner);
+
+        // Status line
+        let status_line = Line::from(vec![
+            Span::styled(format!(" {} ", status_icon), Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+            Span::styled("Estado: ", Style::default().fg(theme.text_muted)),
+            Span::styled(status_label, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+            Span::styled(" │ Servidor: ", Style::default().fg(theme.text_muted)),
+            Span::styled(server_str, Style::default().fg(theme.primary)),
+        ]);
+        frame.render_widget(Paragraph::new(status_line), rows[0]);
+
+        // 3 Cards: Ping, Download, Upload
+        let cards = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(33),
+                Constraint::Percentage(34),
+                Constraint::Percentage(33),
+            ])
+            .split(rows[1]);
+
+        let card_ping = Paragraph::new(vec![
+            Line::from(Span::styled(" LATENCIA / PING", Style::default().fg(theme.text_muted))),
+            Line::from(Span::styled(format!(" ⚡ {}", ping_str), Style::default().fg(theme.warning).add_modifier(Modifier::BOLD))),
+        ])
+        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).border_style(Style::default().fg(theme.border_inactive)));
+
+        let card_dl = Paragraph::new(vec![
+            Line::from(Span::styled(" VELOCIDAD DE BAJADA", Style::default().fg(theme.text_muted))),
+            Line::from(Span::styled(format!(" ↓ {}", dl_str), Style::default().fg(theme.success).add_modifier(Modifier::BOLD))),
+        ])
+        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).border_style(Style::default().fg(theme.border_inactive)));
+
+        let card_ul = Paragraph::new(vec![
+            Line::from(Span::styled(" VELOCIDAD DE SUBIDA", Style::default().fg(theme.text_muted))),
+            Line::from(Span::styled(format!(" ↑ {}", ul_str), Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD))),
+        ])
+        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).border_style(Style::default().fg(theme.border_inactive)));
+
+        frame.render_widget(card_ping, cards[0]);
+        frame.render_widget(card_dl, cards[1]);
+        frame.render_widget(card_ul, cards[2]);
+    } else {
+        // Compact 2-line layout
+        let text = vec![
+            Line::from(vec![
+                Span::styled(format!(" {} ", status_icon), Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+                Span::styled(status_label, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(vec![
+                Span::styled(" Ping: ", Style::default().fg(theme.text_muted)),
+                Span::styled(ping_str, Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
+                Span::styled(" │ ↓ Bajada: ", Style::default().fg(theme.text_muted)),
+                Span::styled(dl_str, Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+                Span::styled(" │ ↑ Subida: ", Style::default().fg(theme.text_muted)),
+                Span::styled(ul_str, Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD)),
+            ]),
+        ];
+        frame.render_widget(Paragraph::new(text), inner);
     }
 }

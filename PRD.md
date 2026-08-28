@@ -42,6 +42,7 @@
 | **FR-11**| **Pestañas & Nav** | Navegación entre vistas (Overview, Procesos, Storage & Net, CPU Detail, GPU Detail) con `Tab` o `1-5`.| Alta |
 | **FR-12**| **Ayuda Modal** | Ventana emergente al presionar `?` detallando los atajos de teclado y ayuda. | Baja |
 | **FR-13**| **GPU Telemetry** | Telemetría multi-proveedor (NVIDIA, AMD, Intel) con VRAM, clocks, ventiladores, temperatura y potencia. | Alta |
+| **FR-14**| **Speed Test** | Prueba interactiva en segundo plano de latencia (Ping), velocidad de bajada (↓ Mbps) y subida (↑ Mbps) con `e`. | Alta |
 
 ---
 

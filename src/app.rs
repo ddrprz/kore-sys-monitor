@@ -1,4 +1,4 @@
-use crate::system::{ProcessInfo, SystemMetrics};
+use crate::system::{ProcessInfo, SpeedTestResults, SpeedTestState, SpeedTestUpdate, SystemMetrics};
 use crate::theme::{Theme, ThemeVariant};
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -105,6 +105,9 @@ pub struct App {
     pub selected_kill_process: Option<ProcessInfo>,
     pub status_message: Option<(String, std::time::Instant)>,
     pub theme: Theme,
+    pub speed_test: SpeedTestResults,
+    pub speed_test_rx: Option<std::sync::mpsc::Receiver<SpeedTestUpdate>>,
+    pub speed_test_last_time: Option<std::time::Instant>,
     pub should_quit: bool,
 }
 
@@ -121,6 +124,9 @@ impl App {
             selected_kill_process: None,
             status_message: None,
             theme: Theme::from_variant(ThemeVariant::CyberCyan),
+            speed_test: SpeedTestResults::default(),
+            speed_test_rx: None,
+            speed_test_last_time: None,
             should_quit: false,
         }
     }
@@ -131,10 +137,86 @@ impl App {
         self.set_status(format!("Tema cambiado a '{}'", next_var.name()));
     }
 
+    pub fn trigger_speed_test(&mut self) {
+        if matches!(
+            self.speed_test.state,
+            SpeedTestState::TestingPing
+                | SpeedTestState::TestingDownload { .. }
+                | SpeedTestState::TestingUpload { .. }
+        ) {
+            self.set_status("Speed Test ya se encuentra en ejecución...".to_string());
+            return;
+        }
+
+        self.set_status("Iniciando Speed Test de red (Ping / ↓ / ↑)...".to_string());
+        self.speed_test.state = SpeedTestState::TestingPing;
+        self.speed_test.ping_ms = None;
+        self.speed_test.download_mbps = None;
+        self.speed_test.upload_mbps = None;
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.speed_test_rx = Some(rx);
+
+        std::thread::spawn(move || {
+            crate::system::run_speed_test(tx);
+        });
+    }
 
     pub fn update(&mut self, elapsed_secs: f64) {
         self.metrics.refresh(elapsed_secs);
         self.clamp_process_selection();
+
+        // Process Speed Test async updates
+        let updates: Vec<_> = if let Some(rx) = &self.speed_test_rx {
+            let mut list = Vec::new();
+            while let Ok(update) = rx.try_recv() {
+                list.push(update);
+            }
+            list
+        } else {
+            Vec::new()
+        };
+
+        for update in updates {
+            match update {
+                SpeedTestUpdate::State(state) => {
+                    self.speed_test.state = state;
+                }
+                SpeedTestUpdate::Ping(ping) => {
+                    self.speed_test.ping_ms = Some(ping);
+                }
+                SpeedTestUpdate::DownloadProgress { progress_pct, current_mbps } => {
+                    self.speed_test.state = SpeedTestState::TestingDownload { progress_pct, current_mbps };
+                    self.speed_test.download_mbps = Some(current_mbps);
+                }
+                SpeedTestUpdate::DownloadComplete(mbps) => {
+                    self.speed_test.download_mbps = Some(mbps);
+                }
+                SpeedTestUpdate::UploadProgress { progress_pct, current_mbps } => {
+                    self.speed_test.state = SpeedTestState::TestingUpload { progress_pct, current_mbps };
+                    self.speed_test.upload_mbps = Some(current_mbps);
+                }
+                SpeedTestUpdate::UploadComplete(mbps) => {
+                    self.speed_test.upload_mbps = Some(mbps);
+                }
+                SpeedTestUpdate::Complete => {
+                    self.speed_test.state = SpeedTestState::Completed;
+                    self.speed_test_last_time = Some(std::time::Instant::now());
+                    let ping_str = self.speed_test.ping_ms.map(|p| format!("{:.1}ms", p)).unwrap_or_else(|| "-".to_string());
+                    let dl_str = self.speed_test.download_mbps.map(|d| format!("{:.1} Mbps", d)).unwrap_or_else(|| "-".to_string());
+                    let ul_str = self.speed_test.upload_mbps.map(|u| format!("{:.1} Mbps", u)).unwrap_or_else(|| "-".to_string());
+                    self.set_status(format!("Speed Test completado (Ping: {} │ ↓ {} │ ↑ {})", ping_str, dl_str, ul_str));
+                }
+                SpeedTestUpdate::Failed(err) => {
+                    self.speed_test.state = SpeedTestState::Failed(err.clone());
+                    self.set_status(format!("Speed Test falló: {}", err));
+                }
+            }
+        }
+
+        if let Some(t) = self.speed_test_last_time {
+            self.speed_test.last_tested_secs_ago = Some(t.elapsed().as_secs());
+        }
 
         // Clear status message after 3 seconds
         if let Some((_, time)) = &self.status_message
