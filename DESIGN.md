@@ -37,17 +37,17 @@
 ### A. Estructura General (Screen Wireframe)
 
 ```
-╭─ kore-sys-monitor v0.3.0 ──────────────────── Host: arch-linux │ Kernel: 6.10.3 │ Uptime: 4h 12m ─╮
+╭─ kore-sys-monitor v0.5.0 ──────────────────── Host: arch-linux │ Kernel: 6.10.3 │ Uptime: 4h 12m ─╮
 │ [1] Overview  │  [2] Processes  │  [3] Storage & Net  │  [4] CPU Detail  │  [5] GPU Detail         │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ ┌─ CPU Global [ 38.5% ] ─────────────────────┐ ┌─ Memory & Swap ──────────────────────────────┐ │
 │ │ 3.8GHz  [████████████░░░░░░░░░░░░░░] 38%   │ │ RAM:  11.4GB / 31.8GB [████████░░░░░░░] 35.8% │ │
 │ │ History:  ▂▃▅▇█▇▅▄▃▂  ▂▃▄▅▆▇█▇▅▄▃          │ │ Swap:  0.2GB /  8.0GB [█░░░░░░░░░░░░░░]  2.5% │ │
 │ └────────────────────────────────────────────┘ └──────────────────────────────────────────────┘ │
-│ ┌─ Disks & Mounts ───────────────────────────┐ ┌─ Network Bandwidth ──────────────────────────┐ │
-│ │ Mount    Type  Total   Used    Free   %    │ │ RX:  1.25 MB/s  ⡀⣀⣠⣤⣦⣶⣦⣤⣄⣀             │ │
-│ │ /        ext4  500GB  120GB   380GB [24%]  │ │ TX:  142 KB/s   ⡀⣀⣠⣤⣶⣦⣤⣄⣀                │ │
-│ │ /home    btrfs   1TB  450GB   550GB [45%]  │ │ Total RX: 4.8 GB │ Total TX: 612 MB           │ │
+│ ┌─ Disks & Mounts / SMART ───────────────────┐ ┌─ Network Adapters & Speed Test [e] ──────────┐ │
+│ │ Mount    Type  Total   Used    Free   %    │ │ ⚡ Ping: 12.4ms │ ↓ Bajada: 145.2 Mbps        │ │
+│ │ /        ext4  500GB  120GB   380GB [24%]  │ │ ↑ Subida: 48.6 Mbps │ Servidor: Anycast Edge  │ │
+│ │ SMART: ● Bueno (Samsung 980 NVMe 38°C)     │ │ RX:  1.25 MB/s │ TX: 142 KB/s                 │ │
 │ └────────────────────────────────────────────┘ └──────────────────────────────────────────────┘ │
 │ ┌─ Top Processes (Filter: none) ─────────────────────────────────────────────────────────────┐ │
 │ │  PID   USER      NAME            CPU%   MEM%   STATE   COMMAND                               │ │
@@ -56,7 +56,7 @@
 │ │  892   ddrprz    kore-sys-monitor 1.5%  0.4%   Running ./target/release/kore-sys-monitor     │ │
 │ └─────────────────────────────────────────────────────────────────────────────────────────────┘ │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ [Tab] Vista │ [/] Buscar │ [s] Ordenar │ [r] Invertir │ [t] Tema │ [Del] Matar │ [?] Ayuda │ [q] Salir │
+│ [Tab] Vista │ [/] Buscar │ [e] SpeedTest │ [s] Ordenar │ [r] Invertir │ [t] Tema │ [Del] Matar │ [q] Salir │
 ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 

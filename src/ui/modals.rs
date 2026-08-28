@@ -89,6 +89,7 @@ pub fn render_help_modal(app: &App, frame: &mut Frame, area: Rect) {
         Line::from(vec![Span::styled(" /               ", Style::default().fg(theme.warning)), Span::raw(" Buscar / Filtrar procesos en tiempo real")]),
         Line::from(vec![Span::styled(" s               ", Style::default().fg(theme.warning)), Span::raw(" Cambiar columna de ordenación (CPU/MEM/PID/Name)")]),
         Line::from(vec![Span::styled(" r               ", Style::default().fg(theme.warning)), Span::raw(" Invertir ordenación (Asc / Desc)")]),
+        Line::from(vec![Span::styled(" e               ", Style::default().fg(theme.warning)), Span::raw(" Iniciar prueba de velocidad de red (Speed Test)")]),
         Line::from(vec![Span::styled(" t               ", Style::default().fg(theme.warning)), Span::raw(" Cambiar tema dinámico (Cyber Cyan, Catppuccin, etc.)")]),
         Line::from(vec![Span::styled(" Del / K / Delete", Style::default().fg(theme.warning)), Span::raw(" Ventana modal para terminar proceso seleccionado")]),
         Line::from(vec![Span::styled(" ?               ", Style::default().fg(theme.warning)), Span::raw(" Abrir / Cerrar esta ventana de ayuda")]),

@@ -25,15 +25,16 @@
    - Histórico visual de consumo.
 4. **Discos e I/O de Almacenamiento**:
    - Tabla de particiones/puntos de montaje, espacio total, libre, usado (%) y tipo de sistema de archivos.
-5. **Red y Ancho de Banda**:
+5. **Red, Ancho de Banda y Speed Test**:
    - Monitoreo en tiempo real de velocidad de descarga (RX) y subida (TX) con gráficos Sparkline.
+   - Prueba interactiva de velocidad de red (**Speed Test** con Ping/Latencia, Velocidad ↓ Mbps, Velocidad ↑ Mbps y Servidor Anycast activada con la tecla `e`).
 6. **Gestor de Procesos Interactivo**:
    - Tabla con PID, Nombre, % CPU, % Memoria y Estado.
    - Ordenamiento por columna (CPU, Memoria, PID, Nombre).
    - Búsqueda/Filtrado dinámico en tiempo real (`/`).
-   - Terminación/Signal de procesos (`k`).
+   - Terminación/Signal de procesos (`k` / `Del`).
 7. **Navegación e Interfaz**:
-   - Diseño modular con pestañas (Tabs) o paneles enfocables mediante teclado.
+   - Diseño modular con pestañas (Tabs) y paneles adaptativos multi-línea (2-líneas) para evitar cortes de texto.
    - Tema oscuro elegante con alto contraste y compatibilidad con terminales ANSI / TrueColor.
 
 ---

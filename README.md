@@ -8,13 +8,14 @@
 
 - 🚀 **Bajo Consumo de Recursos**: Poca memoria RAM (< 15 MB) y uso mínimo de CPU gracias a la recolección optimizada y caché de hardware.
 - 🎨 **Sistema de Temas Dinámicos**: Alterna entre **Cyber Cyan**, **Catppuccin Mocha**, **Dracula** y **Monochrome Matrix** en tiempo real presionando `t`.
-- 📐 **Diseño Responsivo (Breakpoints)**: Reorganización inteligente del layout para pantallas compactas, estándar y ultra-wide (3 columnas).
+- 📐 **Diseño Responsivo (Breakpoints & 2-Líneas)**: Reorganización inteligente del layout y auto-wrap multi-línea en almacenamiento y redes para evitar cortes de información en cualquier tamaño de pantalla.
 - 🔍 **Búsqueda & Filtrado de Procesos**: Presiona `/` para filtrar procesos en tiempo real por nombre, PID o comando.
 - 📊 **Ordenamiento Interactivo**: Presiona `s` para cambiar la columna de ordenación (CPU, MEM, PID, Nombre) y `r` para invertir el orden.
 - ⚡ **Gestor de Procesos Integrado**: Modal interactivo de confirmación (`Del` / `K`) para terminar procesos (`SIGTERM`/`SIGKILL`).
+- 🚀 **Network Speed Test Integrado**: Presiona `e` para ejecutar pruebas en tiempo real de Ping/Latencia, Velocidad de Bajada (↓ Mbps) y Subida (↑ Mbps) sin bloquear el hilo principal.
 - 📈 **Detalle Extendido de CPU**: Pestaña dedicada `[4] CPU Detail` con desgloses por núcleo, métricas promedio/mínimas/máximas e historial Sparkline.
 - 🎮 **Telemetría Avanzada de GPU**: Pestaña dedicada `[5] GPU Detail` y resumen en Overview con soporte multi-proveedor (NVIDIA, AMD, Intel) para VRAM, clocks de núcleo/memoria, ventiladores, potencia (W), resolución/refresco y motores de cómputo/video.
-- 💾 **Almacenamiento y Red**: Pestaña `[3] Storage & Net` con clasificación de medios (NVMe/SSD/HDD), salud de disco en %, modelos de adaptadores de red y gráficos de tráfico RX/TX.
+- 💾 **Almacenamiento y Red**: Pestaña `[3] Storage & Net` con clasificación de medios (NVMe/SSD/HDD), telemetría SMART CrystalDisk, modelos de adaptadores de red, IP/GW/DNS y gráficos de tráfico RX/TX.
 - 🛡️ **Restauración Garantizada del Terminal**: Custom panic hook y destructores limpios que aseguran que el terminal nunca quede desconfigurado.
 
 ---
@@ -32,6 +33,7 @@
 | `/` | Entrar en modo Búsqueda/Filtro de procesos. |
 | `s` | Cambiar columna de ordenación (CPU% → MEM% → PID → Name). |
 | `r` | Invertir el sentido de ordenación (Ascendente / Descendente). |
+| `e` | Iniciar prueba de velocidad de red en tiempo real (**Speed Test**). |
 | `t` | Cambiar el tema visual dinámicamente. |
 | `Del` / `Delete` / `K` | Abrir modal de confirmación para terminar el proceso seleccionado. |
 | `?` | Abrir / Cerrar ventana modal de ayuda. |
