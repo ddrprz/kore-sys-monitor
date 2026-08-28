@@ -2,7 +2,7 @@ use crate::app::App;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
-    text::Span,
+    text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Cell, Row, Sparkline, Table},
     Frame,
 };
@@ -39,7 +39,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     }
 
     // Determine layout: side-by-side sparklines on wide screens
-    let is_wide = inner.width >= 100;
+    let is_wide_screen = inner.width >= 100;
     let sparkline_height = if inner.height >= 16 { 4 } else { 3 };
 
     let chunks = Layout::default()
@@ -50,62 +50,140 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         ])
         .split(inner);
 
-    // 1. Connected Network Adapters Table
-    let header_cells = [
-        "Interface / Adapter",
-        "Status",
-        "IP Address",
-        "Gateway",
-        "DNS Servers",
-        "RX Rate",
-        "TX Rate",
-        "Total RX/TX",
-    ]
-    .iter()
-    .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
-    let header = Row::new(header_cells).height(1);
+    // 1. Connected Network Adapters Table (Responsive: 1-line vs 2-line auto-wrap)
+    let is_wide_table = inner.width >= 120;
 
-    let rows = app.metrics.network_interfaces.iter().take(8).map(|iface| {
-        let is_connected = iface.is_up || (iface.ip_address != "-" && !iface.ip_address.is_empty());
-        let (status_symbol, status_text, status_color) = if is_connected {
-            ("●", " CONNECTED", theme.success)
-        } else {
-            ("○", " IDLE", theme.text_muted)
-        };
+    let adapters_table = if is_wide_table {
+        let header_cells = [
+            "Interface / Adapter",
+            "Status",
+            "IP Address",
+            "Gateway",
+            "DNS Servers",
+            "RX Rate",
+            "TX Rate",
+            "Total RX/TX",
+        ]
+        .iter()
+        .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
+        let header = Row::new(header_cells).height(1);
 
-        let ip_display = if iface.ip_address.is_empty() { "-" } else { &iface.ip_address };
-        let gw_display = if iface.gateway.is_empty() { "-" } else { &iface.gateway };
-        let dns_display = if iface.dns_servers.is_empty() { "-" } else { &iface.dns_servers };
+        let rows = app.metrics.network_interfaces.iter().take(8).map(|iface| {
+            let is_connected = iface.is_up || (iface.ip_address != "-" && !iface.ip_address.is_empty());
+            let (status_symbol, status_text, status_color) = if is_connected {
+                ("●", " CONNECTED", theme.success)
+            } else {
+                ("○", " IDLE", theme.text_muted)
+            };
 
-        let total_str = format!("↓{} ↑{}", format_net_bytes(iface.rx_bytes), format_net_bytes(iface.tx_bytes));
+            let ip_display = if iface.ip_address.is_empty() { "-" } else { &iface.ip_address };
+            let gw_display = if iface.gateway.is_empty() { "-" } else { &iface.gateway };
+            let dns_display = if iface.dns_servers.is_empty() { "-" } else { &iface.dns_servers };
 
-        Row::new(vec![
-            Cell::from(iface.model.clone()).style(Style::default().add_modifier(Modifier::BOLD).fg(theme.primary)),
-            Cell::from(format!("{}{}", status_symbol, status_text)).style(Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
-            Cell::from(ip_display.to_string()).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
-            Cell::from(gw_display.to_string()).style(Style::default().fg(theme.warning)),
-            Cell::from(dns_display.to_string()).style(Style::default().fg(theme.secondary)),
-            Cell::from(format!("↓ {:.1} KB/s", iface.rx_rate_kbs)).style(Style::default().fg(theme.success)),
-            Cell::from(format!("↑ {:.1} KB/s", iface.tx_rate_kbs)).style(Style::default().fg(theme.secondary)),
-            Cell::from(total_str).style(Style::default().fg(theme.text_muted)),
-        ])
-    });
+            let total_str = format!("↓{} ↑{}", format_net_bytes(iface.rx_bytes), format_net_bytes(iface.tx_bytes));
 
-    let adapters_table = Table::new(
-        rows,
-        [
-            Constraint::Min(22),
-            Constraint::Length(14),
-            Constraint::Length(17),
-            Constraint::Length(15),
-            Constraint::Length(18),
-            Constraint::Length(13),
-            Constraint::Length(13),
-            Constraint::Length(18),
-        ],
-    )
-    .header(header)
-    .block(
+            Row::new(vec![
+                Cell::from(iface.model.clone()).style(Style::default().add_modifier(Modifier::BOLD).fg(theme.primary)),
+                Cell::from(format!("{}{}", status_symbol, status_text)).style(Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+                Cell::from(ip_display.to_string()).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+                Cell::from(gw_display.to_string()).style(Style::default().fg(theme.warning)),
+                Cell::from(dns_display.to_string()).style(Style::default().fg(theme.secondary)),
+                Cell::from(format!("↓ {:.1} KB/s", iface.rx_rate_kbs)).style(Style::default().fg(theme.success)),
+                Cell::from(format!("↑ {:.1} KB/s", iface.tx_rate_kbs)).style(Style::default().fg(theme.secondary)),
+                Cell::from(total_str).style(Style::default().fg(theme.text_muted)),
+            ])
+        });
+
+        Table::new(
+            rows,
+            [
+                Constraint::Min(22),
+                Constraint::Length(14),
+                Constraint::Length(17),
+                Constraint::Length(15),
+                Constraint::Length(18),
+                Constraint::Length(13),
+                Constraint::Length(13),
+                Constraint::Length(18),
+            ],
+        )
+        .header(header)
+    } else {
+        // Responsive 2-line mode to avoid cutting off info on narrow screens
+        let header_cells = [
+            "Adapter / Status",
+            "IP & Gateway",
+            "DNS Servers",
+            "Current RX / TX",
+            "Total RX / TX",
+        ]
+        .iter()
+        .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
+        let header = Row::new(header_cells).height(1);
+
+        let rows = app.metrics.network_interfaces.iter().take(8).map(|iface| {
+            let is_connected = iface.is_up || (iface.ip_address != "-" && !iface.ip_address.is_empty());
+            let (status_symbol, status_text, status_color) = if is_connected {
+                ("●", " CONNECTED", theme.success)
+            } else {
+                ("○", " IDLE", theme.text_muted)
+            };
+
+            let ip_display = if iface.ip_address.is_empty() { "-" } else { &iface.ip_address };
+            let gw_display = if iface.gateway.is_empty() { "-" } else { &iface.gateway };
+            let dns_display = if iface.dns_servers.is_empty() { "-" } else { &iface.dns_servers };
+
+            let cell_adapter = Cell::from(Text::from(vec![
+                Line::from(Span::styled(iface.model.clone(), Style::default().add_modifier(Modifier::BOLD).fg(theme.primary))),
+                Line::from(Span::styled(format!("{}{}", status_symbol, status_text), Style::default().fg(status_color).add_modifier(Modifier::BOLD))),
+            ]));
+
+            let cell_ip_gw = Cell::from(Text::from(vec![
+                Line::from(vec![
+                    Span::styled("IP: ", Style::default().fg(theme.text_muted)),
+                    Span::styled(ip_display.to_string(), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+                ]),
+                Line::from(vec![
+                    Span::styled("GW: ", Style::default().fg(theme.text_muted)),
+                    Span::styled(gw_display.to_string(), Style::default().fg(theme.warning)),
+                ]),
+            ]));
+
+            let cell_dns = Cell::from(Text::from(vec![
+                Line::from(vec![
+                    Span::styled("DNS: ", Style::default().fg(theme.text_muted)),
+                    Span::styled(dns_display.to_string(), Style::default().fg(theme.secondary)),
+                ]),
+                Line::from(Span::styled(iface.name.clone(), Style::default().fg(theme.text_muted))),
+            ]));
+
+            let cell_rates = Cell::from(Text::from(vec![
+                Line::from(Span::styled(format!("↓ {:.1} KB/s", iface.rx_rate_kbs), Style::default().fg(theme.success))),
+                Line::from(Span::styled(format!("↑ {:.1} KB/s", iface.tx_rate_kbs), Style::default().fg(theme.secondary))),
+            ]));
+
+            let cell_total = Cell::from(Text::from(vec![
+                Line::from(Span::styled(format!("↓ Tot: {}", format_net_bytes(iface.rx_bytes)), Style::default().fg(theme.text_muted))),
+                Line::from(Span::styled(format!("↑ Tot: {}", format_net_bytes(iface.tx_bytes)), Style::default().fg(theme.text_muted))),
+            ]));
+
+            Row::new(vec![cell_adapter, cell_ip_gw, cell_dns, cell_rates, cell_total]).height(2)
+        });
+
+        Table::new(
+            rows,
+            [
+                Constraint::Min(20),
+                Constraint::Length(20),
+                Constraint::Length(18),
+                Constraint::Length(14),
+                Constraint::Length(18),
+            ],
+        )
+        .header(header)
+    };
+
+    let adapters_table = adapters_table.block(
         Block::default()
             .title(Span::styled(
                 " Active Network Interfaces & Routes ",
@@ -149,7 +227,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .data(&tx_data)
         .style(Style::default().fg(theme.secondary));
 
-    if is_wide {
+    if is_wide_screen {
         let spark_cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])

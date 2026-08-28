@@ -90,20 +90,35 @@ pub fn render(app: &App, frame: &mut Frame) {
 }
 
 fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
-    let is_ultrawide = area.width > 120 && area.height > 35;
+    let is_ultrawide = area.width > 140 && area.height > 35;
+    let is_narrow = area.width < 100;
 
     if is_ultrawide {
-        // Ultra-wide 3-column layout: CPU (Left) | Memory, GPU & Net (Center) | Disks & Processes (Right)
+        // Ultra-wide 3-column layout:
+        // Col 0 (Left): CPU (Top) + Storage Volumes & Mounts + Disk Health & SMART (Underneath)
+        // Col 1 (Center): Memory, GPU & Net
+        // Col 2 (Right): Top Processes
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Percentage(30),
-                Constraint::Percentage(35),
-                Constraint::Percentage(35),
+                Constraint::Percentage(34),
+                Constraint::Percentage(33),
+                Constraint::Percentage(33),
             ])
             .split(area);
 
-        cpu::render(app, frame, cols[0]);
+        let left_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(10),     // CPU
+                Constraint::Percentage(50), // Storage Volumes & Mounts
+                Constraint::Percentage(50), // Disk Health & SMART
+            ])
+            .split(cols[0]);
+
+        cpu::render(app, frame, left_chunks[0]);
+        storage::render_mounts_table(app, frame, left_chunks[1]);
+        storage::render_smart_table(app, frame, left_chunks[2]);
 
         let center_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -114,38 +129,73 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
         gpu::render_summary(app, frame, center_chunks[1]);
         network::render(app, frame, center_chunks[2]);
 
-        let right_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-            .split(cols[2]);
-
-        storage::render(app, frame, right_chunks[0]);
-        processes::render(app, frame, right_chunks[1]);
-    } else {
-        // Standard layout with CPU, Memory, GPU top row, Storage & Disk Health middle row, Processes bottom
-        let main_chunks = Layout::default()
+        processes::render(app, frame, cols[2]);
+    } else if is_narrow {
+        // Single-column layout for compact terminals
+        let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(9), // CPU, RAM, GPU
-                Constraint::Length(8), // Storage Volumes & Disk Health
+                Constraint::Length(8), // CPU
+                Constraint::Length(7), // Storage Mounts
+                Constraint::Length(7), // SMART Disks
+                Constraint::Length(7), // Memory
+                Constraint::Length(6), // GPU
                 Constraint::Min(8),    // Top Processes
             ])
             .split(area);
 
-        let top_chunks = Layout::default()
+        cpu::render(app, frame, chunks[0]);
+        storage::render_mounts_table(app, frame, chunks[1]);
+        storage::render_smart_table(app, frame, chunks[2]);
+        memory::render(app, frame, chunks[3]);
+        gpu::render_summary(app, frame, chunks[4]);
+        processes::render(app, frame, chunks[5]);
+    } else {
+        // Standard 2-column layout:
+        // Left Column (48%): CPU on top, Storage Volumes & Mounts + Disk Health & SMART underneath
+        // Right Column (52%): Memory & GPU summary on top row, Top Processes below
+        let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Percentage(34),
-                Constraint::Percentage(33),
-                Constraint::Percentage(33),
+                Constraint::Percentage(48),
+                Constraint::Percentage(52),
             ])
-            .split(main_chunks[0]);
+            .split(area);
 
-        cpu::render(app, frame, top_chunks[0]);
-        memory::render(app, frame, top_chunks[1]);
-        gpu::render_summary(app, frame, top_chunks[2]);
-        storage::render_overview_disks(app, frame, main_chunks[1]);
-        processes::render(app, frame, main_chunks[2]);
+        // Left Column: CPU -> Mounts -> SMART
+        let left_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(9),      // CPU
+                Constraint::Percentage(50), // Storage Volumes & Mounts
+                Constraint::Percentage(50), // Disk Health & SMART
+            ])
+            .split(cols[0]);
+
+        cpu::render(app, frame, left_chunks[0]);
+        storage::render_mounts_table(app, frame, left_chunks[1]);
+        storage::render_smart_table(app, frame, left_chunks[2]);
+
+        // Right Column: Memory & GPU top row -> Top Processes bottom
+        let right_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(9), // Memory & GPU side-by-side
+                Constraint::Min(10),   // Top Processes
+            ])
+            .split(cols[1]);
+
+        let right_top_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50), // RAM & Swap
+                Constraint::Percentage(50), // GPU Summary
+            ])
+            .split(right_chunks[0]);
+
+        memory::render(app, frame, right_top_chunks[0]);
+        gpu::render_summary(app, frame, right_top_chunks[1]);
+        processes::render(app, frame, right_chunks[1]);
     }
 }
 
