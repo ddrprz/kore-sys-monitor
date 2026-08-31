@@ -16,25 +16,26 @@
 
 ## 3. Funcionalidades Clave
 1. **Header & Información del Sistema**:
-   - Hostname, Kernel, tiempo de actividad (Uptime), arquitectura CPU y versión de SO.
+   - Dirección IP activa principal, Hostname, Kernel, tiempo de actividad (Uptime), arquitectura CPU y versión de SO.
 2. **Monitor de CPU**:
    - Gráfico/Sparkline histórico de uso global de CPU.
    - Barras de nivel por núcleo individual (Core load).
 3. **Monitor de Memoria y Swap**:
    - Medidores (Gauges) de RAM consumida vs. disponible y memoria Swap.
-   - Histórico visual de consumo.
-4. **Discos e I/O de Almacenamiento**:
-   - Tabla de particiones/puntos de montaje, espacio total, libre, usado (%) y tipo de sistema de archivos.
-5. **Red, Ancho de Banda y Speed Test**:
+   - Histórico visual de consumo y detalles de hardware (DDR, SODIMM, velocidad MHz, fabricante).
+4. **Discos e I/O de Almacenamiento (Pestaña [3] Storage)**:
+   - Tabla de particiones/puntos de montaje, espacio total, libre, usado (%) y telemetría S.M.A.R.T. de unidades físicas.
+5. **Red, Ancho de Banda y Speed Test (Pestaña [4] Network)**:
+   - Identificación de tipo de conexión (**WiFi** o **Cable**), nombre de red / SSID, puerta de enlace (**Gateway**) e IP local.
    - Monitoreo en tiempo real de velocidad de descarga (RX) y subida (TX) con gráficos Sparkline.
-   - Prueba interactiva de velocidad de red (**Speed Test** con Ping/Latencia, Velocidad ↓ Mbps, Velocidad ↑ Mbps y Servidor Anycast activada con la tecla `e`).
-6. **Gestor de Procesos Interactivo**:
+   - Prueba interactiva de velocidad de red (**Speed Test** con Ping/Latencia, Velocidad ↓ Mbps, Velocidad ↑ Mbps y Servidor Anycast con la tecla `e`).
+6. **Gestor de Procesos Interactivo (Pestaña [2] Processes)**:
    - Tabla con PID, Nombre, % CPU, % Memoria y Estado.
    - Ordenamiento por columna (CPU, Memoria, PID, Nombre).
    - Búsqueda/Filtrado dinámico en tiempo real (`/`).
    - Terminación/Signal de procesos (`k` / `Del`).
 7. **Navegación e Interfaz**:
-   - Diseño modular con pestañas (Tabs) y paneles adaptativos multi-línea (2-líneas) para evitar cortes de texto.
+   - Diseño modular con 6 pestañas (`[1] Overview`, `[2] Processes`, `[3] Storage`, `[4] Network`, `[5] CPU Detail`, `[6] GPU Detail`) accesibles con `Tab` y teclas `1` a `6`.
    - Tema oscuro elegante con alto contraste y compatibilidad con terminales ANSI / TrueColor.
 
 ---

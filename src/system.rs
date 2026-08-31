@@ -95,16 +95,41 @@ pub struct DiskInfo {
     pub smart: Option<DiskSmartDetails>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConnectionMedium {
+    #[default]
+    Cable,
+    WiFi,
+    Virtual,
+    Disconnected,
+}
+
+impl ConnectionMedium {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ConnectionMedium::Cable => "Cable (Ethernet)",
+            ConnectionMedium::WiFi => "WiFi",
+            ConnectionMedium::Virtual => "Virtual",
+            ConnectionMedium::Disconnected => "Desconectado",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct NetworkInterfaceInfo {
     pub name: String,
     pub model: String,
     pub ip_address: String,
     pub gateway: String,
+    #[allow(dead_code)]
     pub dns_servers: String,
+    pub network_name: String,
+    pub medium: ConnectionMedium,
     pub rx_bytes: u64,
     pub tx_bytes: u64,
+    #[allow(dead_code)]
     pub rx_rate_kbs: f64,
+    #[allow(dead_code)]
     pub tx_rate_kbs: f64,
     pub is_up: bool,
 }
@@ -116,6 +141,8 @@ pub struct NetworkAdapterConfig {
     pub ip_address: String,
     pub gateway: String,
     pub dns_servers: String,
+    pub network_name: String,
+    pub medium: ConnectionMedium,
 }
 
 #[derive(Debug, Clone)]
@@ -181,6 +208,10 @@ pub struct SystemMetrics {
     pub disk_list: Vec<DiskInfo>,
     pub smart_disks: Vec<DiskSmartDetails>,
     pub network_interfaces: Vec<NetworkInterfaceInfo>,
+    pub primary_ip: String,
+    pub primary_network_name: String,
+    pub primary_gateway: String,
+    pub primary_medium: ConnectionMedium,
     pub rx_rate_kbs: f64,
     pub tx_rate_kbs: f64,
     pub rx_history: VecDeque<u64>,
@@ -250,6 +281,10 @@ impl SystemMetrics {
             disk_list: Vec::new(),
             smart_disks: cached_smart_disks.clone(),
             network_interfaces: Vec::new(),
+            primary_ip: "127.0.0.1".to_string(),
+            primary_network_name: "Desconectado".to_string(),
+            primary_gateway: "N/A".to_string(),
+            primary_medium: ConnectionMedium::Disconnected,
             rx_rate_kbs: 0.0,
             tx_rate_kbs: 0.0,
             rx_history: VecDeque::with_capacity(max_history_len),
@@ -395,6 +430,24 @@ impl SystemMetrics {
                 .filter(|dns| !dns.is_empty())
                 .unwrap_or_else(|| "-".to_string());
 
+            let network_name = cached_cfg
+                .map(|c| c.network_name.clone())
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| "-".to_string());
+
+            let medium = cached_cfg
+                .map(|c| c.medium)
+                .unwrap_or_else(|| {
+                    let name_lower = iface_name.to_lowercase();
+                    if name_lower.contains("wi-fi") || name_lower.contains("wifi") || name_lower.contains("wireless") || name_lower.contains("wlan") {
+                        ConnectionMedium::WiFi
+                    } else if name_lower.contains("virtual") || name_lower.contains("hyper-v") || name_lower.contains("vethernet") {
+                        ConnectionMedium::Virtual
+                    } else {
+                        ConnectionMedium::Cable
+                    }
+                });
+
             let model_desc = cached_cfg
                 .map(|c| c.model.clone())
                 .filter(|m| !m.is_empty())
@@ -412,6 +465,8 @@ impl SystemMetrics {
                 ip_address,
                 gateway,
                 dns_servers,
+                network_name,
+                medium,
                 rx_bytes: rx,
                 tx_bytes: tx,
                 rx_rate_kbs: rx_kbs,
@@ -431,6 +486,8 @@ impl SystemMetrics {
                     ip_address: cfg.ip_address.clone(),
                     gateway: if cfg.gateway.is_empty() { "-".to_string() } else { cfg.gateway.clone() },
                     dns_servers: if cfg.dns_servers.is_empty() { "-".to_string() } else { cfg.dns_servers.clone() },
+                    network_name: cfg.network_name.clone(),
+                    medium: cfg.medium,
                     rx_bytes: 0,
                     tx_bytes: 0,
                     rx_rate_kbs: 0.0,
@@ -448,6 +505,48 @@ impl SystemMetrics {
         });
 
         self.network_interfaces = ifaces;
+
+        // Compute Primary Active IP, Medium, Gateway & Network Name
+        let (p_ip, p_name, p_gw, p_med) = {
+            let active = self
+                .network_interfaces
+                .iter()
+                .find(|i| i.is_up && !i.ip_address.is_empty() && i.ip_address != "-" && !i.gateway.is_empty() && i.gateway != "-")
+                .or_else(|| self.network_interfaces.iter().find(|i| i.is_up && !i.ip_address.is_empty() && i.ip_address != "-"))
+                .or_else(|| self.network_interfaces.first());
+
+            if let Some(iface) = active {
+                let first_ip = if iface.ip_address.is_empty() || iface.ip_address == "-" {
+                    "No IP".to_string()
+                } else {
+                    iface.ip_address.split(',').next().unwrap_or("No IP").trim().to_string()
+                };
+                let net_name = if iface.network_name.is_empty() || iface.network_name == "-" {
+                    if iface.medium == ConnectionMedium::WiFi {
+                        "Red Wi-Fi".to_string()
+                    } else if iface.medium == ConnectionMedium::Cable {
+                        "Red Cableada".to_string()
+                    } else {
+                        "Conectado".to_string()
+                    }
+                } else {
+                    iface.network_name.clone()
+                };
+                let gw = if iface.gateway.is_empty() || iface.gateway == "-" {
+                    "N/A".to_string()
+                } else {
+                    iface.gateway.clone()
+                };
+                (first_ip, net_name, gw, iface.medium)
+            } else {
+                ("No IP".to_string(), "Desconectado".to_string(), "N/A".to_string(), ConnectionMedium::Disconnected)
+            }
+        };
+
+        self.primary_ip = p_ip;
+        self.primary_network_name = p_name;
+        self.primary_gateway = p_gw;
+        self.primary_medium = p_med;
 
         self.total_rx_bytes = curr_rx;
         self.total_tx_bytes = curr_tx;
@@ -1638,7 +1737,7 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
             .args([
                 "-NoProfile",
                 "-Command",
-                "Get-NetIPConfiguration | ForEach-Object { \"$($_.InterfaceAlias)###$($_.InterfaceDescription)###$($_.IPv4Address.IPAddress -join ', ')###$($_.IPv4DefaultGateway.NextHop -join ', ')###$($_.DNSServer.ServerAddresses -join ', ')\" }"
+                "Get-NetIPConfiguration | ForEach-Object { \"$($_.InterfaceAlias)###$($_.InterfaceDescription)###$($_.IPv4Address.IPAddress -join ', ')###$($_.IPv4DefaultGateway.NextHop -join ', ')###$($_.DNSServer.ServerAddresses -join ', ')###$($_.NetProfile.Name)###$($_.NetAdapter.PhysicalMediaType)###$($_.NetAdapter.MediaType)\" }"
             ])
             .output()
             && output.status.success()
@@ -1654,14 +1753,38 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
                         let ip = parts.get(2).copied().unwrap_or("").trim().to_string();
                         let gw = parts.get(3).copied().unwrap_or("").trim().to_string();
                         let dns = parts.get(4).copied().unwrap_or("").trim().to_string();
+                        let net_profile_name = parts.get(5).copied().unwrap_or("").trim().to_string();
+                        let phys_type = parts.get(6).copied().unwrap_or("").trim().to_string();
+                        let media_type = parts.get(7).copied().unwrap_or("").trim().to_string();
 
                         let model = if desc.is_empty() { alias.clone() } else { desc.clone() };
+                        let combined = format!("{} {} {} {}", alias, desc, phys_type, media_type).to_lowercase();
+                        let medium = if combined.contains("802.11") || combined.contains("wireless") || combined.contains("wi-fi") || combined.contains("wifi") || combined.contains("wlan") {
+                            ConnectionMedium::WiFi
+                        } else if combined.contains("virtual") || combined.contains("hyper-v") || combined.contains("vethernet") || combined.contains("vmware") {
+                            ConnectionMedium::Virtual
+                        } else {
+                            ConnectionMedium::Cable
+                        };
+
+                        let network_name = if !net_profile_name.is_empty() {
+                            net_profile_name
+                        } else if medium == ConnectionMedium::WiFi {
+                            "Red Wi-Fi".to_string()
+                        } else if medium == ConnectionMedium::Cable {
+                            "Red Ethernet".to_string()
+                        } else {
+                            "-".to_string()
+                        };
+
                         let cfg = NetworkAdapterConfig {
                             name: alias.clone(),
                             model,
                             ip_address: ip,
                             gateway: gw,
                             dns_servers: dns,
+                            network_name,
+                            medium,
                         };
 
                         if !alias.is_empty() {
@@ -1679,6 +1802,7 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
     #[cfg(target_os = "linux")]
     {
         use std::fs;
+        use std::process::Command;
         let mut dns_servers = Vec::new();
         if let Ok(resolv) = fs::read_to_string("/etc/resolv.conf") {
             for line in resolv.lines() {
@@ -1692,9 +1816,31 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
         }
         let dns_str = dns_servers.join(", ");
 
+        let wifi_ssid = Command::new("iwgetid").arg("-r").output().ok()
+            .and_then(|o| if o.status.success() { Some(String::from_utf8_lossy(&o.stdout).trim().to_string()) } else { None })
+            .filter(|s| !s.is_empty());
+
         if let Ok(entries) = fs::read_dir("/sys/class/net") {
             for entry in entries.flatten() {
                 let iface_name = entry.file_name().to_string_lossy().to_string();
+                if iface_name == "lo" {
+                    continue;
+                }
+                let is_wireless = entry.path().join("wireless").exists() || iface_name.starts_with("wl");
+                let medium = if is_wireless {
+                    ConnectionMedium::WiFi
+                } else if iface_name.starts_with("vir") || iface_name.starts_with("docker") || iface_name.starts_with("veth") {
+                    ConnectionMedium::Virtual
+                } else {
+                    ConnectionMedium::Cable
+                };
+
+                let net_name = if is_wireless {
+                    wifi_ssid.clone().unwrap_or_else(|| "Red Wi-Fi".to_string())
+                } else {
+                    "Red Cableada".to_string()
+                };
+
                 let vendor_path = entry.path().join("device/vendor");
                 let device_path = entry.path().join("device/device");
 
@@ -1712,10 +1858,52 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
                         ip_address: String::new(),
                         gateway: String::new(),
                         dns_servers: dns_str.clone(),
+                        network_name: net_name,
+                        medium,
                     },
                 );
             }
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        let wifi_ssid = Command::new("networksetup")
+            .args(["-getairportnetwork", "en0"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    let text = String::from_utf8_lossy(&o.stdout);
+                    if let Some(pos) = text.find(": ") {
+                        let ssid = text[pos + 2..].trim();
+                        if !ssid.is_empty() && !ssid.contains("not associated") {
+                            return Some(ssid.to_string());
+                        }
+                    }
+                }
+                None
+            });
+
+        let (net_name, medium) = if let Some(ssid) = wifi_ssid {
+            (ssid, ConnectionMedium::WiFi)
+        } else {
+            ("Ethernet Network".to_string(), ConnectionMedium::Cable)
+        };
+
+        map.insert(
+            "en0".to_string(),
+            NetworkAdapterConfig {
+                name: "en0".to_string(),
+                model: "Primary Network Adapter (en0)".to_string(),
+                ip_address: String::new(),
+                gateway: String::new(),
+                dns_servers: String::new(),
+                network_name: net_name,
+                medium,
+            },
+        );
     }
 
     map
@@ -2409,7 +2597,11 @@ mod tests {
             assert!(!iface.ip_address.is_empty());
             assert!(!iface.gateway.is_empty());
             assert!(!iface.dns_servers.is_empty());
+            assert!(!iface.network_name.is_empty());
         }
+        assert!(!metrics.primary_ip.is_empty());
+        assert!(!metrics.primary_network_name.is_empty());
+        assert!(!metrics.primary_gateway.is_empty());
         // Ensure smart disks telemetry is populated
         assert!(!metrics.smart_disks.is_empty());
         for smart in &metrics.smart_disks {

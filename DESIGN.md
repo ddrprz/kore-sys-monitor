@@ -37,17 +37,17 @@
 ### A. Estructura General (Screen Wireframe)
 
 ```
-╭─ kore-sys-monitor v0.5.0 ──────────────────── Host: arch-linux │ Kernel: 6.10.3 │ Uptime: 4h 12m ─╮
-│ [1] Overview  │  [2] Processes  │  [3] Storage & Net  │  [4] CPU Detail  │  [5] GPU Detail         │
+╭─ IP: 192.168.1.53 ────────────────────────── Host: arch-linux │ Kernel: 6.10.3 │ Uptime: 4h 12m ─╮
+│ [1] Overview  │  [2] Processes  │  [3] Storage  │  [4] Network  │  [5] CPU Detail  │  [6] GPU Detail   │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ ┌─ CPU Global [ 38.5% ] ─────────────────────┐ ┌─ Memory & Swap ──────────────────────────────┐ │
 │ │ 3.8GHz  [████████████░░░░░░░░░░░░░░] 38%   │ │ RAM:  11.4GB / 31.8GB [████████░░░░░░░] 35.8% │ │
 │ │ History:  ▂▃▅▇█▇▅▄▃▂  ▂▃▄▅▆▇█▇▅▄▃          │ │ Swap:  0.2GB /  8.0GB [█░░░░░░░░░░░░░░]  2.5% │ │
 │ └────────────────────────────────────────────┘ └──────────────────────────────────────────────┘ │
-│ ┌─ Disks & Mounts / SMART ───────────────────┐ ┌─ Network Adapters & Speed Test [e] ──────────┐ │
-│ │ Mount    Type  Total   Used    Free   %    │ │ ⚡ Ping: 12.4ms │ ↓ Bajada: 145.2 Mbps        │ │
-│ │ /        ext4  500GB  120GB   380GB [24%]  │ │ ↑ Subida: 48.6 Mbps │ Servidor: Anycast Edge  │ │
-│ │ SMART: ● Bueno (Samsung 980 NVMe 38°C)     │ │ RX:  1.25 MB/s │ TX: 142 KB/s                 │ │
+│ ┌─ Disks & Mounts / SMART ───────────────────┐ ┌─ Network Status & Speed Test [e] ─────────────┐ │
+│ │ Mount    Type  Total   Used    Free   %    │ │ 🔌 Conexión: Cable (Ethernet) │ 🌐 Red 2     │ │
+│ │ /        ext4  500GB  120GB   380GB [24%]  │ │ 🚪 Gateway: 192.168.1.99 │ IP: 192.168.1.53 │ │
+│ │ SMART: ● Bueno (Samsung 980 NVMe 38°C)     │ │ ⚡ Ping: 12.4ms │ ↓ 145.2 Mbps │ ↑ 48.6 Mbps │ │
 │ └────────────────────────────────────────────┘ └──────────────────────────────────────────────┘ │
 │ ┌─ Top Processes (Filter: none) ─────────────────────────────────────────────────────────────┐ │
 │ │  PID   USER      NAME            CPU%   MEM%   STATE   COMMAND                               │ │

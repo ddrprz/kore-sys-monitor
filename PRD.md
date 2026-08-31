@@ -29,19 +29,19 @@
 
 | ID | Módulo | Descripción | Prioridad |
 | :--- | :--- | :--- | :--- |
-| **FR-1** | **Header Info** | Muestra Hostname, Kernel, Versión de SO, Arquitectura y Tiempo de actividad (Uptime). | Alta (MVP) |
+| **FR-1** | **Header Info & IP** | Muestra Dirección IP Principal, Hostname, Kernel, Versión de SO, Arquitectura y Tiempo de actividad (Uptime). | Alta (MVP) |
 | **FR-2** | **CPU Global & History** | Visualización en tiempo real del uso global de CPU (%) con gráfico histórico Sparkline. | Alta (MVP) |
 | **FR-3** | **CPU Per-Core** | Desglose por barras de carga individual para cada núcleo o hilo lógico de la CPU. | Media |
 | **FR-4** | **Memoria & Swap** | Medidores (Gauges) de RAM usada, disponible y Swap consumido con porcentajes. | Alta (MVP) |
-| **FR-5** | **Almacenamiento** | Tabla de puntos de montaje, tipo de filesystem, espacio total, usado y libre. | Alta (MVP) |
-| **FR-6** | **Red y Ancho de Banda**| Velocidad de entrada (RX) y salida (TX) en KB/s o MB/s con gráficos de tendencia. | Media |
+| **FR-5** | **Almacenamiento** | Pestaña dedicada `[3] Storage` con tabla de particiones, tipo de filesystem, salud SMART y espacio total/usado/libre. | Alta (MVP) |
+| **FR-6** | **Red Simplificada & Speed Test**| Pestaña dedicada `[4] Network` con tipo de conexión (WiFi/Cable), Nombre de red (SSID), Gateway, IP y Speed Test (`e`). | Alta |
 | **FR-7** | **Tabla de Procesos** | Lista interactiva de procesos con PID, Usuario, Nombre, % CPU, % Memoria y Estado. | Alta (MVP) |
 | **FR-8** | **Filtro de Procesos** | Búsqueda dinámica en tiempo real al presionar `/` para filtrar por nombre o PID. | Alta |
 | **FR-9** | **Ordenamiento** | Cambio interactivo de columna de ordenación (CPU, Memoria, PID, Nombre) con `s` y `r`. | Alta |
 | **FR-10**| **Terminación (Kill)**| Ventana modal de confirmación al presionar `k` para enviar señal `SIGTERM` / `SIGKILL`. | Alta |
-| **FR-11**| **Pestañas & Nav** | Navegación entre vistas (Overview, Procesos, Storage & Net, CPU Detail, GPU Detail) con `Tab` o `1-5`.| Alta |
+| **FR-11**| **Pestañas & Nav** | Navegación entre 6 vistas (Overview, Procesos, Storage, Network, CPU Detail, GPU Detail) con `Tab` o `1-6`.| Alta |
 | **FR-12**| **Ayuda Modal** | Ventana emergente al presionar `?` detallando los atajos de teclado y ayuda. | Baja |
-| **FR-13**| **GPU Telemetry** | Telemetría multi-proveedor (NVIDIA, AMD, Intel) con VRAM, clocks, ventiladores, temperatura y potencia. | Alta |
+| **FR-13**| **GPU Telemetry** | Pestaña `[6] GPU Detail` con telemetría multi-proveedor (NVIDIA, AMD, Intel) para VRAM, clocks, ventiladores, temperatura y potencia. | Alta |
 | **FR-14**| **Speed Test** | Prueba interactiva en segundo plano de latencia (Ping), velocidad de bajada (↓ Mbps) y subida (↑ Mbps) con `e`. | Alta |
 
 ---

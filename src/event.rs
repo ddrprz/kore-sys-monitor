@@ -19,9 +19,10 @@ pub fn handle_events(app: &mut App, tick_rate: Duration) -> Result<()> {
                     (KeyCode::BackTab, _) => app.previous_tab(),
                     (KeyCode::Char('1'), _) => app.select_tab(Tab::Overview),
                     (KeyCode::Char('2'), _) => app.select_tab(Tab::Processes),
-                    (KeyCode::Char('3'), _) => app.select_tab(Tab::StorageNet),
-                    (KeyCode::Char('4'), _) => app.select_tab(Tab::CpuDetail),
-                    (KeyCode::Char('5'), _) => app.select_tab(Tab::GpuDetail),
+                    (KeyCode::Char('3'), _) => app.select_tab(Tab::Storage),
+                    (KeyCode::Char('4'), _) => app.select_tab(Tab::Network),
+                    (KeyCode::Char('5'), _) => app.select_tab(Tab::CpuDetail),
+                    (KeyCode::Char('6'), _) => app.select_tab(Tab::GpuDetail),
                     (KeyCode::Down, _) | (KeyCode::Char('j'), _) => app.select_next_process(),
                     (KeyCode::Up, _) | (KeyCode::Char('k'), _) => app.select_previous_process(),
                     (KeyCode::PageDown, _) => {
