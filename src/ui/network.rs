@@ -47,8 +47,8 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(4),                   // Adapters Table
-            Constraint::Length(sparkline_height),  // Traffic Sparklines
-            Constraint::Length(speed_test_height), // Speed Test Panel
+            Constraint::Length(speed_test_height), // Speed Test Panel (Ordered before RX/TX)
+            Constraint::Length(sparkline_height),  // Traffic Sparklines (RX/TX)
         ])
         .split(inner);
 
@@ -99,31 +99,35 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         Table::new(
             rows,
             [
-                Constraint::Min(22),
-                Constraint::Length(14),
-                Constraint::Length(17),
-                Constraint::Length(15),
-                Constraint::Length(18),
-                Constraint::Length(13),
-                Constraint::Length(13),
-                Constraint::Length(18),
+                Constraint::Percentage(22),
+                Constraint::Percentage(11),
+                Constraint::Percentage(13),
+                Constraint::Percentage(12),
+                Constraint::Percentage(14),
+                Constraint::Percentage(9),
+                Constraint::Percentage(9),
+                Constraint::Percentage(10),
             ],
         )
         .header(header)
+        .block(
+            Block::default()
+                .title(Span::styled(" Network Adapters & Interfaces ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)))
+                .borders(Borders::NONE),
+        )
     } else {
-        // Responsive 2-line mode to avoid cutting off info on narrow screens
+        // Compact 2-Line Row Layout for standard screens
         let header_cells = [
-            "Adapter / Status",
-            "IP & Gateway",
-            "DNS Servers",
-            "Current RX / TX",
-            "Total RX / TX",
+            "Interface / Model Details",
+            "Status",
+            "Network Config (IP / GW / DNS)",
+            "Traffic (Rate & Total)",
         ]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
         let header = Row::new(header_cells).height(1);
 
-        let rows = app.metrics.network_interfaces.iter().take(8).map(|iface| {
+        let rows = app.metrics.network_interfaces.iter().take(6).map(|iface| {
             let is_connected = iface.is_up || (iface.ip_address != "-" && !iface.ip_address.is_empty());
             let (status_symbol, status_text, status_color) = if is_connected {
                 ("●", " CONNECTED", theme.success)
@@ -135,69 +139,73 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             let gw_display = if iface.gateway.is_empty() { "-" } else { &iface.gateway };
             let dns_display = if iface.dns_servers.is_empty() { "-" } else { &iface.dns_servers };
 
-            let cell_adapter = Cell::from(Text::from(vec![
-                Line::from(Span::styled(iface.model.clone(), Style::default().add_modifier(Modifier::BOLD).fg(theme.primary))),
-                Line::from(Span::styled(format!("{}{}", status_symbol, status_text), Style::default().fg(status_color).add_modifier(Modifier::BOLD))),
-            ]));
+            let col0 = Text::from(vec![
+                Line::from(Span::styled(iface.model.clone(), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))),
+                Line::from(Span::styled(format!("Dev: {}", iface.name), Style::default().fg(theme.text_muted))),
+            ]);
 
-            let cell_ip_gw = Cell::from(Text::from(vec![
+            let col1 = Text::from(vec![
+                Line::from(Span::styled(format!("{}{}", status_symbol, status_text), Style::default().fg(status_color).add_modifier(Modifier::BOLD))),
+                Line::from(Span::styled(if is_connected { "Active Link" } else { "No Carrier" }, Style::default().fg(theme.text_muted))),
+            ]);
+
+            let col2 = Text::from(vec![
                 Line::from(vec![
                     Span::styled("IP: ", Style::default().fg(theme.text_muted)),
-                    Span::styled(ip_display.to_string(), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+                    Span::styled(ip_display, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+                    Span::styled(" │ GW: ", Style::default().fg(theme.text_muted)),
+                    Span::styled(gw_display, Style::default().fg(theme.warning)),
                 ]),
-                Line::from(vec![
-                    Span::styled("GW: ", Style::default().fg(theme.text_muted)),
-                    Span::styled(gw_display.to_string(), Style::default().fg(theme.warning)),
-                ]),
-            ]));
-
-            let cell_dns = Cell::from(Text::from(vec![
                 Line::from(vec![
                     Span::styled("DNS: ", Style::default().fg(theme.text_muted)),
-                    Span::styled(dns_display.to_string(), Style::default().fg(theme.secondary)),
+                    Span::styled(dns_display, Style::default().fg(theme.secondary)),
                 ]),
-                Line::from(Span::styled(iface.name.clone(), Style::default().fg(theme.text_muted))),
-            ]));
+            ]);
 
-            let cell_rates = Cell::from(Text::from(vec![
-                Line::from(Span::styled(format!("↓ {:.1} KB/s", iface.rx_rate_kbs), Style::default().fg(theme.success))),
-                Line::from(Span::styled(format!("↑ {:.1} KB/s", iface.tx_rate_kbs), Style::default().fg(theme.secondary))),
-            ]));
+            let col3 = Text::from(vec![
+                Line::from(vec![
+                    Span::styled(format!("↓ {:.1} KB/s", iface.rx_rate_kbs), Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+                    Span::styled(" │ ", Style::default().fg(theme.border_inactive)),
+                    Span::styled(format!("↑ {:.1} KB/s", iface.tx_rate_kbs), Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD)),
+                ]),
+                Line::from(Span::styled(
+                    format!("Total: ↓{}  ↑{}", format_net_bytes(iface.rx_bytes), format_net_bytes(iface.tx_bytes)),
+                    Style::default().fg(theme.text_muted),
+                )),
+            ]);
 
-            let cell_total = Cell::from(Text::from(vec![
-                Line::from(Span::styled(format!("↓ Tot: {}", format_net_bytes(iface.rx_bytes)), Style::default().fg(theme.text_muted))),
-                Line::from(Span::styled(format!("↑ Tot: {}", format_net_bytes(iface.tx_bytes)), Style::default().fg(theme.text_muted))),
-            ]));
-
-            Row::new(vec![cell_adapter, cell_ip_gw, cell_dns, cell_rates, cell_total]).height(2)
+            Row::new(vec![
+                Cell::from(col0),
+                Cell::from(col1),
+                Cell::from(col2),
+                Cell::from(col3),
+            ])
+            .height(2)
         });
 
         Table::new(
             rows,
             [
-                Constraint::Min(20),
-                Constraint::Length(20),
-                Constraint::Length(18),
-                Constraint::Length(14),
-                Constraint::Length(18),
+                Constraint::Percentage(28),
+                Constraint::Percentage(14),
+                Constraint::Percentage(34),
+                Constraint::Percentage(24),
             ],
         )
         .header(header)
+        .block(
+            Block::default()
+                .title(Span::styled(" Network Adapters & Interfaces ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)))
+                .borders(Borders::NONE),
+        )
     };
-
-    let adapters_table = adapters_table.block(
-        Block::default()
-            .title(Span::styled(
-                " Active Network Interfaces & Routes ",
-                Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD),
-            ))
-            .borders(Borders::BOTTOM)
-            .border_style(Style::default().fg(theme.border_inactive)),
-    );
 
     frame.render_widget(adapters_table, chunks[0]);
 
-    // 2. Render Sparklines (Side-by-side on wide screens, stacked on narrow)
+    // 2. Render Speed Test Section directly above Traffic Sparklines
+    render_speed_test_panel(app, frame, chunks[1]);
+
+    // 3. Render Sparklines (Side-by-side on wide screens, stacked on narrow)
     let is_wide_screen = inner.width >= 100;
     let rx_data: Vec<u64> = app.metrics.rx_history.iter().copied().collect();
     let tx_data: Vec<u64> = app.metrics.tx_history.iter().copied().collect();
@@ -234,7 +242,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         let spark_cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[1]);
+            .split(chunks[2]);
 
         frame.render_widget(rx_sparkline, spark_cols[0]);
         frame.render_widget(tx_sparkline, spark_cols[1]);
@@ -242,14 +250,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         let spark_rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[1]);
+            .split(chunks[2]);
 
         frame.render_widget(rx_sparkline, spark_rows[0]);
         frame.render_widget(tx_sparkline, spark_rows[1]);
     }
-
-    // 3. Render Speed Test Section below Network
-    render_speed_test_panel(app, frame, chunks[2]);
 }
 
 pub fn render_speed_test_panel(app: &App, frame: &mut Frame, area: Rect) {
@@ -296,20 +301,20 @@ pub fn render_speed_test_panel(app: &App, frame: &mut Frame, area: Rect) {
     let ul_str = st.upload_mbps.map(|u| format!("{:.1} Mbps", u)).unwrap_or_else(|| "-- Mbps".to_string());
     let server_str = format!("{} ({})", st.server_name, st.server_location);
 
-    if area.width >= 100 && inner.height >= 3 {
+    if area.width >= 95 && inner.height >= 3 {
         // Multi-card layout on wide views
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(2)])
             .split(inner);
 
-        // Status line
+        // Status line with Server prominent
         let status_line = Line::from(vec![
             Span::styled(format!(" {} ", status_icon), Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
             Span::styled("Estado: ", Style::default().fg(theme.text_muted)),
             Span::styled(status_label, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
             Span::styled(" │ Servidor: ", Style::default().fg(theme.text_muted)),
-            Span::styled(server_str, Style::default().fg(theme.primary)),
+            Span::styled(server_str, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
         ]);
         frame.render_widget(Paragraph::new(status_line), rows[0]);
 
@@ -345,11 +350,13 @@ pub fn render_speed_test_panel(app: &App, frame: &mut Frame, area: Rect) {
         frame.render_widget(card_dl, cards[1]);
         frame.render_widget(card_ul, cards[2]);
     } else {
-        // Compact 2-line layout
+        // Compact layout with server included
         let text = vec![
             Line::from(vec![
                 Span::styled(format!(" {} ", status_icon), Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
                 Span::styled(status_label, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+                Span::styled(" │ Srv: ", Style::default().fg(theme.text_muted)),
+                Span::styled(st.server_name.clone(), Style::default().fg(theme.primary)),
             ]),
             Line::from(vec![
                 Span::styled(" Ping: ", Style::default().fg(theme.text_muted)),

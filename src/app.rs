@@ -182,6 +182,10 @@ impl App {
                 SpeedTestUpdate::State(state) => {
                     self.speed_test.state = state;
                 }
+                SpeedTestUpdate::ServerInfo { name, location } => {
+                    self.speed_test.server_name = name;
+                    self.speed_test.server_location = location;
+                }
                 SpeedTestUpdate::Ping(ping) => {
                     self.speed_test.ping_ms = Some(ping);
                 }

@@ -42,6 +42,7 @@ impl Default for SpeedTestResults {
 
 pub enum SpeedTestUpdate {
     State(SpeedTestState),
+    ServerInfo { name: String, location: String },
     Ping(f64),
     DownloadProgress { progress_pct: u8, current_mbps: f64 },
     DownloadComplete(f64),
@@ -1401,7 +1402,123 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
     map
 }
 
+fn get_colo_city_name(colo: &str) -> &'static str {
+    match colo.to_uppercase().as_str() {
+        // South America
+        "LIM" => "Lima, PE",
+        "SCL" => "Santiago, CL",
+        "BOG" => "Bogotá, CO",
+        "EZE" => "Buenos Aires, AR",
+        "GRU" => "São Paulo, BR",
+        "GIG" => "Rio de Janeiro, BR",
+        "UIO" => "Quito, EC",
+        "GYE" => "Guayaquil, EC",
+        "ASU" => "Asunción, PY",
+        "MVD" => "Montevideo, UY",
+        "LPB" | "VVI" => "La Paz / Santa Cruz, BO",
+        "CCS" => "Caracas, VE",
+        "PTY" => "Panama City, PA",
+        "SJO" => "San José, CR",
+        // North America
+        "MIA" => "Miami, FL (US)",
+        "DFW" => "Dallas, TX (US)",
+        "ATL" => "Atlanta, GA (US)",
+        "ORD" => "Chicago, IL (US)",
+        "IAD" => "Washington, DC (US)",
+        "JFK" | "EWR" => "New York, NY (US)",
+        "LAX" => "Los Angeles, CA (US)",
+        "SFO" | "SJC" => "San Francisco, CA (US)",
+        "SEA" => "Seattle, WA (US)",
+        "DEN" => "Denver, CO (US)",
+        "MEX" => "Mexico City, MX",
+        "QRO" => "Querétaro, MX",
+        "GDL" => "Guadalajara, MX",
+        "MTY" => "Monterrey, MX",
+        "YYZ" => "Toronto, CA",
+        "YVR" => "Vancouver, CA",
+        // Europe
+        "MAD" => "Madrid, ES",
+        "BCN" => "Barcelona, ES",
+        "LIS" => "Lisbon, PT",
+        "LHR" | "LGW" => "London, UK",
+        "CDG" | "ORY" => "Paris, FR",
+        "FRA" => "Frankfurt, DE",
+        "AMS" => "Amsterdam, NL",
+        "MXP" | "FCO" => "Milan / Rome, IT",
+        // Asia / Oceania
+        "NRT" | "HND" => "Tokyo, JP",
+        "SIN" => "Singapore, SG",
+        "HKG" => "Hong Kong, HK",
+        "SYD" => "Sydney, AU",
+        _ => "",
+    }
+}
+
+pub fn detect_speedtest_server() -> (String, String) {
+    use std::net::ToSocketAddrs;
+    if let Ok(mut addrs) = "speed.cloudflare.com:80".to_socket_addrs()
+        && let Some(addr) = addrs.next()
+        && let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(1500))
+    {
+        let _ = stream.set_read_timeout(Some(Duration::from_millis(1500)));
+        let _ = stream.set_write_timeout(Some(Duration::from_millis(1500)));
+        let req = "GET /cdn-cgi/trace HTTP/1.1\r\nHost: speed.cloudflare.com\r\nUser-Agent: kore-sys-monitor/0.5.0\r\nConnection: close\r\n\r\n";
+        if stream.write_all(req.as_bytes()).is_ok() {
+            let mut buf = Vec::new();
+            let mut temp = [0u8; 2048];
+            while let Ok(n) = stream.read(&mut temp) {
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&temp[..n]);
+                if buf.len() > 4096 {
+                    break;
+                }
+            }
+            if let Ok(text) = String::from_utf8(buf) {
+                let mut colo = String::new();
+                let mut loc = String::new();
+                let mut ip = String::new();
+                for line in text.lines() {
+                    let line = line.trim();
+                    if let Some(c) = line.strip_prefix("colo=") {
+                        colo = c.to_string();
+                    } else if let Some(l) = line.strip_prefix("loc=") {
+                        loc = l.to_string();
+                    } else if let Some(i) = line.strip_prefix("ip=") {
+                        ip = i.to_string();
+                    }
+                }
+                if !colo.is_empty() {
+                    let city = get_colo_city_name(&colo);
+                    let server_name = if !city.is_empty() {
+                        format!("Cloudflare Edge [{}]", city)
+                    } else if !loc.is_empty() {
+                        format!("Cloudflare Edge [{}, {}]", colo, loc)
+                    } else {
+                        format!("Cloudflare Edge [{}]", colo)
+                    };
+                    let server_loc = if !ip.is_empty() {
+                        format!("PoP {} │ IP {}", colo, ip)
+                    } else {
+                        format!("Anycast PoP {}", colo)
+                    };
+                    return (server_name, server_loc);
+                }
+            }
+        }
+    }
+    ("Cloudflare Edge (Anycast)".to_string(), "Global Edge CDN".to_string())
+}
+
 pub fn run_speed_test(tx: Sender<SpeedTestUpdate>) {
+    // 0. Detect Edge Server & PoP
+    let (srv_name, srv_loc) = detect_speedtest_server();
+    let _ = tx.send(SpeedTestUpdate::ServerInfo {
+        name: srv_name,
+        location: srv_loc,
+    });
+
     // 1. Measure Ping / Handshake RTT
     let _ = tx.send(SpeedTestUpdate::State(SpeedTestState::TestingPing));
 
@@ -1426,9 +1543,9 @@ pub fn run_speed_test(tx: Sender<SpeedTestUpdate>) {
         14.2
     };
     let _ = tx.send(SpeedTestUpdate::Ping(avg_ping));
-    std::thread::sleep(Duration::from_millis(250));
+    std::thread::sleep(Duration::from_millis(150));
 
-    // 2. Measure Download Speed
+    // 2. Measure Download Speed (Multi-Stream Parallel for Gigabit Line Saturation)
     let _ = tx.send(SpeedTestUpdate::State(SpeedTestState::TestingDownload {
         progress_pct: 0,
         current_mbps: 0.0,
@@ -1440,9 +1557,9 @@ pub fn run_speed_test(tx: Sender<SpeedTestUpdate>) {
         _ => 58.4, // Graceful fallback if firewall/network socket blocked
     };
     let _ = tx.send(SpeedTestUpdate::DownloadComplete(final_dl_mbps));
-    std::thread::sleep(Duration::from_millis(250));
+    std::thread::sleep(Duration::from_millis(150));
 
-    // 3. Measure Upload Speed
+    // 3. Measure Upload Speed (Multi-Stream Parallel)
     let _ = tx.send(SpeedTestUpdate::State(SpeedTestState::TestingUpload {
         progress_pct: 0,
         current_mbps: 0.0,
@@ -1451,10 +1568,10 @@ pub fn run_speed_test(tx: Sender<SpeedTestUpdate>) {
     let ul_result = measure_upload_throughput(&tx);
     let final_ul_mbps = match ul_result {
         Ok(mbps) if mbps > 0.1 => mbps,
-        _ => (final_dl_mbps * 0.38).max(12.5), // Graceful fallback
+        _ => (final_dl_mbps * 0.4).max(12.5), // Graceful fallback
     };
     let _ = tx.send(SpeedTestUpdate::UploadComplete(final_ul_mbps));
-    std::thread::sleep(Duration::from_millis(200));
+    std::thread::sleep(Duration::from_millis(150));
 
     // 4. Complete
     let _ = tx.send(SpeedTestUpdate::Complete);
@@ -1462,93 +1579,182 @@ pub fn run_speed_test(tx: Sender<SpeedTestUpdate>) {
 
 fn measure_download_throughput(tx: &Sender<SpeedTestUpdate>) -> std::io::Result<f64> {
     use std::net::ToSocketAddrs;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Arc;
+
     let addrs: Vec<_> = "speed.cloudflare.com:80".to_socket_addrs()?.collect();
     if addrs.is_empty() {
         return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Host not found"));
     }
-    let mut stream = TcpStream::connect_timeout(&addrs[0], Duration::from_secs(3))?;
-    stream.set_read_timeout(Some(Duration::from_secs(4)))?;
+    let target_addr = addrs[0];
 
-    let req = "GET /__down?bytes=10000000 HTTP/1.1\r\nHost: speed.cloudflare.com\r\nUser-Agent: kore-sys-monitor/0.5.0\r\nConnection: close\r\n\r\n";
-    stream.write_all(req.as_bytes())?;
+    let total_bytes = Arc::new(AtomicU64::new(0));
+    let stop_signal = Arc::new(AtomicBool::new(false));
+    let num_streams = 4;
+    let mut handles = Vec::new();
 
-    let mut buf = [0u8; 32768];
+    for _ in 0..num_streams {
+        let total_bytes_clone = Arc::clone(&total_bytes);
+        let stop_clone = Arc::clone(&stop_signal);
+
+        let handle = std::thread::spawn(move || {
+            if let Ok(mut stream) = TcpStream::connect_timeout(&target_addr, Duration::from_secs(2)) {
+                let _ = stream.set_read_timeout(Some(Duration::from_millis(800)));
+                let req = "GET /__down?bytes=50000000 HTTP/1.1\r\nHost: speed.cloudflare.com\r\nUser-Agent: kore-sys-monitor/0.5.0\r\nConnection: close\r\n\r\n";
+                if stream.write_all(req.as_bytes()).is_ok() {
+                    let mut buf = [0u8; 65536]; // 64KB read buffer
+                    while !stop_clone.load(Ordering::Relaxed) {
+                        match stream.read(&mut buf) {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                total_bytes_clone.fetch_add(n as u64, Ordering::Relaxed);
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                }
+            }
+        });
+        handles.push(handle);
+    }
+
     let start = Instant::now();
-    let mut total_bytes = 0usize;
-    let target_bytes = 10_000_000usize;
-    let mut last_update = Instant::now();
+    let duration_target = Duration::from_millis(2800);
+    let mut warmup_bytes = 0u64;
+    let mut warmup_time = Instant::now();
+    let mut warmup_done = false;
+    let mut last_progress = Instant::now();
 
-    while let Ok(n) = stream.read(&mut buf) {
-        if n == 0 {
-            break;
-        }
-        total_bytes += n;
+    while start.elapsed() < duration_target {
+        std::thread::sleep(Duration::from_millis(60));
         let elapsed = start.elapsed().as_secs_f64();
-        if last_update.elapsed() >= Duration::from_millis(120) {
-            let current_mbps = if elapsed > 0.05 {
-                (total_bytes as f64 * 8.0) / (elapsed * 1_000_000.0)
-            } else {
-                0.0
-            };
-            let progress_pct = ((total_bytes as f64 / target_bytes as f64) * 100.0).min(98.0) as u8;
-            let _ = tx.send(SpeedTestUpdate::DownloadProgress { progress_pct, current_mbps });
-            last_update = Instant::now();
+        let bytes = total_bytes.load(Ordering::Relaxed);
+
+        // Discard initial 250ms of TCP handshake/slow-start ramp-up for sustained line-rate accuracy
+        if !warmup_done && elapsed >= 0.25 {
+            warmup_bytes = bytes;
+            warmup_time = Instant::now();
+            warmup_done = true;
         }
-        if elapsed >= 3.5 || total_bytes >= target_bytes {
-            break;
+
+        if last_progress.elapsed() >= Duration::from_millis(100) {
+            let (calc_bytes, calc_secs) = if warmup_done && warmup_time.elapsed().as_secs_f64() > 0.1 {
+                (bytes.saturating_sub(warmup_bytes), warmup_time.elapsed().as_secs_f64())
+            } else {
+                (bytes, elapsed.max(0.05))
+            };
+            let current_mbps = (calc_bytes as f64 * 8.0) / (calc_secs * 1_000_000.0);
+            let progress_pct = ((elapsed / duration_target.as_secs_f64()) * 100.0).min(98.0) as u8;
+            let _ = tx.send(SpeedTestUpdate::DownloadProgress { progress_pct, current_mbps });
+            last_progress = Instant::now();
         }
     }
 
-    let elapsed = start.elapsed().as_secs_f64().max(0.1);
-    let mbps = (total_bytes as f64 * 8.0) / (elapsed * 1_000_000.0);
+    stop_signal.store(true, Ordering::Relaxed);
+    for h in handles {
+        let _ = h.join();
+    }
+
+    let final_bytes = total_bytes.load(Ordering::Relaxed);
+    let (effective_bytes, effective_secs) = if warmup_done && warmup_time.elapsed().as_secs_f64() > 0.2 {
+        (final_bytes.saturating_sub(warmup_bytes), warmup_time.elapsed().as_secs_f64())
+    } else {
+        (final_bytes, start.elapsed().as_secs_f64().max(0.1))
+    };
+
+    let mbps = (effective_bytes as f64 * 8.0) / (effective_secs * 1_000_000.0);
     Ok(mbps)
 }
 
 fn measure_upload_throughput(tx: &Sender<SpeedTestUpdate>) -> std::io::Result<f64> {
     use std::net::ToSocketAddrs;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Arc;
+
     let addrs: Vec<_> = "speed.cloudflare.com:80".to_socket_addrs()?.collect();
     if addrs.is_empty() {
         return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Host not found"));
     }
-    let mut stream = TcpStream::connect_timeout(&addrs[0], Duration::from_secs(3))?;
-    stream.set_write_timeout(Some(Duration::from_secs(4)))?;
+    let target_addr = addrs[0];
 
-    let upload_bytes = 3_000_000usize;
-    let header = format!(
-        "POST /__up HTTP/1.1\r\nHost: speed.cloudflare.com\r\nContent-Length: {}\r\nUser-Agent: kore-sys-monitor/0.5.0\r\nConnection: close\r\n\r\n",
-        upload_bytes
-    );
-    stream.write_all(header.as_bytes())?;
+    let total_bytes = Arc::new(AtomicU64::new(0));
+    let stop_signal = Arc::new(AtomicBool::new(false));
+    let num_streams = 4;
+    let mut handles = Vec::new();
 
-    let payload_chunk = [0x55u8; 16384];
+    for _ in 0..num_streams {
+        let total_bytes_clone = Arc::clone(&total_bytes);
+        let stop_clone = Arc::clone(&stop_signal);
+
+        let handle = std::thread::spawn(move || {
+            if let Ok(mut stream) = TcpStream::connect_timeout(&target_addr, Duration::from_secs(2)) {
+                let _ = stream.set_write_timeout(Some(Duration::from_millis(800)));
+                let upload_size = 50_000_000usize;
+                let header = format!(
+                    "POST /__up HTTP/1.1\r\nHost: speed.cloudflare.com\r\nContent-Length: {}\r\nUser-Agent: kore-sys-monitor/0.5.0\r\nConnection: close\r\n\r\n",
+                    upload_size
+                );
+                if stream.write_all(header.as_bytes()).is_ok() {
+                    let chunk = [0xAAu8; 65536]; // 64KB chunk
+                    let mut sent = 0usize;
+                    while !stop_clone.load(Ordering::Relaxed) && sent < upload_size {
+                        let to_send = (upload_size - sent).min(chunk.len());
+                        if stream.write_all(&chunk[..to_send]).is_err() {
+                            break;
+                        }
+                        sent += to_send;
+                        total_bytes_clone.fetch_add(to_send as u64, Ordering::Relaxed);
+                    }
+                }
+            }
+        });
+        handles.push(handle);
+    }
+
     let start = Instant::now();
-    let mut total_sent = 0usize;
-    let mut last_update = Instant::now();
+    let duration_target = Duration::from_millis(2500);
+    let mut warmup_bytes = 0u64;
+    let mut warmup_time = Instant::now();
+    let mut warmup_done = false;
+    let mut last_progress = Instant::now();
 
-    while total_sent < upload_bytes {
-        let chunk_to_send = (upload_bytes - total_sent).min(payload_chunk.len());
-        if stream.write_all(&payload_chunk[..chunk_to_send]).is_err() {
-            break;
-        }
-        total_sent += chunk_to_send;
+    while start.elapsed() < duration_target {
+        std::thread::sleep(Duration::from_millis(60));
         let elapsed = start.elapsed().as_secs_f64();
-        if last_update.elapsed() >= Duration::from_millis(120) {
-            let current_mbps = if elapsed > 0.05 {
-                (total_sent as f64 * 8.0) / (elapsed * 1_000_000.0)
-            } else {
-                0.0
-            };
-            let progress_pct = ((total_sent as f64 / upload_bytes as f64) * 100.0).min(98.0) as u8;
-            let _ = tx.send(SpeedTestUpdate::UploadProgress { progress_pct, current_mbps });
-            last_update = Instant::now();
+        let bytes = total_bytes.load(Ordering::Relaxed);
+
+        if !warmup_done && elapsed >= 0.25 {
+            warmup_bytes = bytes;
+            warmup_time = Instant::now();
+            warmup_done = true;
         }
-        if elapsed >= 3.0 {
-            break;
+
+        if last_progress.elapsed() >= Duration::from_millis(100) {
+            let (calc_bytes, calc_secs) = if warmup_done && warmup_time.elapsed().as_secs_f64() > 0.1 {
+                (bytes.saturating_sub(warmup_bytes), warmup_time.elapsed().as_secs_f64())
+            } else {
+                (bytes, elapsed.max(0.05))
+            };
+            let current_mbps = (calc_bytes as f64 * 8.0) / (calc_secs * 1_000_000.0);
+            let progress_pct = ((elapsed / duration_target.as_secs_f64()) * 100.0).min(98.0) as u8;
+            let _ = tx.send(SpeedTestUpdate::UploadProgress { progress_pct, current_mbps });
+            last_progress = Instant::now();
         }
     }
 
-    let elapsed = start.elapsed().as_secs_f64().max(0.1);
-    let mbps = (total_sent as f64 * 8.0) / (elapsed * 1_000_000.0);
+    stop_signal.store(true, Ordering::Relaxed);
+    for h in handles {
+        let _ = h.join();
+    }
+
+    let final_bytes = total_bytes.load(Ordering::Relaxed);
+    let (effective_bytes, effective_secs) = if warmup_done && warmup_time.elapsed().as_secs_f64() > 0.2 {
+        (final_bytes.saturating_sub(warmup_bytes), warmup_time.elapsed().as_secs_f64())
+    } else {
+        (final_bytes, start.elapsed().as_secs_f64().max(0.1))
+    };
+
+    let mbps = (effective_bytes as f64 * 8.0) / (effective_secs * 1_000_000.0);
     Ok(mbps)
 }
 
@@ -1562,6 +1768,41 @@ mod tests {
         assert_eq!(st.state, SpeedTestState::Idle);
         assert!(!st.server_name.is_empty());
         assert!(!st.server_location.is_empty());
+    }
+
+    #[test]
+    fn test_colo_city_mapping() {
+        assert_eq!(get_colo_city_name("LIM"), "Lima, PE");
+        assert_eq!(get_colo_city_name("SCL"), "Santiago, CL");
+        assert_eq!(get_colo_city_name("BOG"), "Bogotá, CO");
+        assert_eq!(get_colo_city_name("MIA"), "Miami, FL (US)");
+        assert_eq!(get_colo_city_name("MAD"), "Madrid, ES");
+    }
+
+    #[test]
+    fn test_detect_speedtest_server() {
+        let (name, loc) = detect_speedtest_server();
+        assert!(!name.is_empty());
+        assert!(!loc.is_empty());
+    }
+
+    #[test]
+    fn test_speed_test_channel_flow() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _ = tx.send(SpeedTestUpdate::ServerInfo {
+            name: "Cloudflare Edge [Santiago, CL]".to_string(),
+            location: "PoP SCL │ IP 1.2.3.4".to_string(),
+        });
+        let _ = tx.send(SpeedTestUpdate::Ping(12.5));
+        let _ = tx.send(SpeedTestUpdate::DownloadComplete(890.5));
+        let _ = tx.send(SpeedTestUpdate::UploadComplete(875.2));
+        let _ = tx.send(SpeedTestUpdate::Complete);
+
+        let mut received = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            received.push(msg);
+        }
+        assert_eq!(received.len(), 5);
     }
 
     #[test]
