@@ -16,7 +16,7 @@ pub fn render_summary(app: &App, frame: &mut Frame, area: Rect) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(6), Constraint::Min(0)])
+        .constraints([Constraint::Length(5), Constraint::Min(4)])
         .split(area);
 
     // Global CPU
@@ -53,25 +53,26 @@ pub fn render_summary(app: &App, frame: &mut Frame, area: Rect) {
     let inner = global_block.inner(chunks[0]);
     frame.render_widget(global_block, chunks[0]);
 
-    let cpu_inner_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(2), Constraint::Min(1)])
-        .split(inner);
+    if inner.height >= 2 {
+        let cpu_inner_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(1)])
+            .split(inner);
 
-    let cpu_name_p = Paragraph::new(Line::from(vec![
-        Span::styled(&app.metrics.cpu_name, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
-    ]))
-    .wrap(ratatui::widgets::Wrap { trim: true });
+        let cpu_name_p = Paragraph::new(Line::from(vec![
+            Span::styled(&app.metrics.cpu_name, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+        ]));
 
-    frame.render_widget(cpu_name_p, cpu_inner_chunks[0]);
+        frame.render_widget(cpu_name_p, cpu_inner_chunks[0]);
 
-    let sparkline_data: Vec<u64> = app.metrics.global_cpu_history.iter().copied().collect();
-    let sparkline = Sparkline::default()
-        .data(&sparkline_data)
-        .max(100)
-        .style(Style::default().fg(color));
+        let sparkline_data: Vec<u64> = app.metrics.global_cpu_history.iter().copied().collect();
+        let sparkline = Sparkline::default()
+            .data(&sparkline_data)
+            .max(100)
+            .style(Style::default().fg(color));
 
-    frame.render_widget(sparkline, cpu_inner_chunks[1]);
+        frame.render_widget(sparkline, cpu_inner_chunks[1]);
+    }
 
     // Per-core Load
     render_core_grid(app, frame, chunks[1], " Per-Core Load ");
@@ -200,15 +201,6 @@ fn render_core_grid(app: &App, frame: &mut Frame, area: Rect, title: &str) {
     }
 
     let num_cores = cores.len();
-    let cols = if num_cores > 16 {
-        4
-    } else if num_cores > 8 {
-        2
-    } else {
-        1
-    };
-
-    let core_rows = num_cores.div_ceil(cols);
 
     let per_core_block = Block::default()
         .title(Span::styled(
@@ -221,6 +213,16 @@ fn render_core_grid(app: &App, frame: &mut Frame, area: Rect, title: &str) {
 
     let inner_area = per_core_block.inner(area);
     frame.render_widget(per_core_block, area);
+
+    let cols = if inner_area.width >= 70 && num_cores > 8 {
+        4
+    } else if num_cores >= 2 {
+        2
+    } else {
+        1
+    };
+
+    let core_rows = num_cores.div_ceil(cols);
 
     let col_constraints = vec![Constraint::Ratio(1, cols as u32); cols];
     let col_chunks = Layout::default()

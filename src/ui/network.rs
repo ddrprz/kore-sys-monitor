@@ -25,7 +25,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 
     let outer_block = Block::default()
         .title(Span::styled(
-            " Network, Connected Adapters & Speed Test ",
+            " Network & Connectivity ",
             Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
@@ -52,19 +52,18 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         ])
         .split(inner);
 
-    // 1. Connected Network Adapters Table (Responsive: 1-line vs 2-line auto-wrap)
-    let is_wide_table = inner.width >= 120;
+    // 1. Connected Network Adapters Table (Multi-line layout to avoid any text clipping)
+    let is_wide_table = inner.width >= 130;
 
     let adapters_table = if is_wide_table {
         let header_cells = [
-            "Interface / Adapter",
+            "Adapter / Hardware Model",
             "Status",
             "IP Address",
-            "Gateway",
-            "DNS Servers",
+            "Gateway / DNS",
             "RX Rate",
             "TX Rate",
-            "Total RX/TX",
+            "Total RX / TX",
         ]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
@@ -82,46 +81,77 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             let gw_display = if iface.gateway.is_empty() { "-" } else { &iface.gateway };
             let dns_display = if iface.dns_servers.is_empty() { "-" } else { &iface.dns_servers };
 
-            let total_str = format!("↓{} ↑{}", format_net_bytes(iface.rx_bytes), format_net_bytes(iface.tx_bytes));
+            let col_model = Text::from(vec![
+                Line::from(Span::styled(iface.model.clone(), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))),
+                Line::from(Span::styled(format!("Dev: {}", iface.name), Style::default().fg(theme.text_muted))),
+            ]);
+
+            let col_status = Text::from(vec![
+                Line::from(Span::styled(format!("{}{}", status_symbol, status_text), Style::default().fg(status_color).add_modifier(Modifier::BOLD))),
+                Line::from(Span::styled(if is_connected { "Active Link" } else { "No Carrier" }, Style::default().fg(theme.text_muted))),
+            ]);
+
+            let col_ip = Text::from(vec![
+                Line::from(Span::styled(ip_display.to_string(), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))),
+                Line::from(Span::styled("IPv4 / IPv6", Style::default().fg(theme.text_muted))),
+            ]);
+
+            let col_net = Text::from(vec![
+                Line::from(vec![
+                    Span::styled("GW: ", Style::default().fg(theme.text_muted)),
+                    Span::styled(gw_display.to_string(), Style::default().fg(theme.warning)),
+                ]),
+                Line::from(vec![
+                    Span::styled("DNS: ", Style::default().fg(theme.text_muted)),
+                    Span::styled(dns_display.to_string(), Style::default().fg(theme.secondary)),
+                ]),
+            ]);
+
+            let col_rx = Text::from(vec![
+                Line::from(Span::styled(format!("↓ {:.1} KB/s", iface.rx_rate_kbs), Style::default().fg(theme.success).add_modifier(Modifier::BOLD))),
+            ]);
+
+            let col_tx = Text::from(vec![
+                Line::from(Span::styled(format!("↑ {:.1} KB/s", iface.tx_rate_kbs), Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD))),
+            ]);
+
+            let col_total = Text::from(vec![
+                Line::from(Span::styled(format!("↓ {}", format_net_bytes(iface.rx_bytes)), Style::default().fg(theme.text_muted))),
+                Line::from(Span::styled(format!("↑ {}", format_net_bytes(iface.tx_bytes)), Style::default().fg(theme.text_muted))),
+            ]);
 
             Row::new(vec![
-                Cell::from(iface.model.clone()).style(Style::default().add_modifier(Modifier::BOLD).fg(theme.primary)),
-                Cell::from(format!("{}{}", status_symbol, status_text)).style(Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
-                Cell::from(ip_display.to_string()).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
-                Cell::from(gw_display.to_string()).style(Style::default().fg(theme.warning)),
-                Cell::from(dns_display.to_string()).style(Style::default().fg(theme.secondary)),
-                Cell::from(format!("↓ {:.1} KB/s", iface.rx_rate_kbs)).style(Style::default().fg(theme.success)),
-                Cell::from(format!("↑ {:.1} KB/s", iface.tx_rate_kbs)).style(Style::default().fg(theme.secondary)),
-                Cell::from(total_str).style(Style::default().fg(theme.text_muted)),
+                Cell::from(col_model),
+                Cell::from(col_status),
+                Cell::from(col_ip),
+                Cell::from(col_net),
+                Cell::from(col_rx),
+                Cell::from(col_tx),
+                Cell::from(col_total),
             ])
+            .height(2)
         });
 
         Table::new(
             rows,
             [
-                Constraint::Percentage(22),
-                Constraint::Percentage(11),
+                Constraint::Percentage(26),
                 Constraint::Percentage(13),
-                Constraint::Percentage(12),
-                Constraint::Percentage(14),
-                Constraint::Percentage(9),
-                Constraint::Percentage(9),
+                Constraint::Percentage(15),
+                Constraint::Percentage(20),
+                Constraint::Percentage(8),
+                Constraint::Percentage(8),
                 Constraint::Percentage(10),
             ],
         )
         .header(header)
-        .block(
-            Block::default()
-                .title(Span::styled(" Network Adapters & Interfaces ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)))
-                .borders(Borders::NONE),
-        )
+        .block(Block::default().borders(Borders::NONE))
     } else {
-        // Compact 2-Line Row Layout for standard screens
+        // Multi-Line (3-line) Layout for standard/compact terminals to completely prevent clipping
         let header_cells = [
-            "Interface / Model Details",
-            "Status",
-            "Network Config (IP / GW / DNS)",
-            "Traffic (Rate & Total)",
+            "Adapter & Link Status",
+            "Network Configuration (IP / Gateway / DNS)",
+            "Traffic & Bandwidth",
         ]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
@@ -130,9 +160,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         let rows = app.metrics.network_interfaces.iter().take(6).map(|iface| {
             let is_connected = iface.is_up || (iface.ip_address != "-" && !iface.ip_address.is_empty());
             let (status_symbol, status_text, status_color) = if is_connected {
-                ("●", " CONNECTED", theme.success)
+                ("●", " CONNECTED (Active Link)", theme.success)
             } else {
-                ("○", " IDLE", theme.text_muted)
+                ("○", " IDLE (No Carrier)", theme.text_muted)
             };
 
             let ip_display = if iface.ip_address.is_empty() { "-" } else { &iface.ip_address };
@@ -142,18 +172,16 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             let col0 = Text::from(vec![
                 Line::from(Span::styled(iface.model.clone(), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))),
                 Line::from(Span::styled(format!("Dev: {}", iface.name), Style::default().fg(theme.text_muted))),
+                Line::from(Span::styled(format!("{}{}", status_symbol, status_text), Style::default().fg(status_color).add_modifier(Modifier::BOLD))),
             ]);
 
             let col1 = Text::from(vec![
-                Line::from(Span::styled(format!("{}{}", status_symbol, status_text), Style::default().fg(status_color).add_modifier(Modifier::BOLD))),
-                Line::from(Span::styled(if is_connected { "Active Link" } else { "No Carrier" }, Style::default().fg(theme.text_muted))),
-            ]);
-
-            let col2 = Text::from(vec![
                 Line::from(vec![
-                    Span::styled("IP: ", Style::default().fg(theme.text_muted)),
+                    Span::styled("IP:  ", Style::default().fg(theme.text_muted)),
                     Span::styled(ip_display, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
-                    Span::styled(" │ GW: ", Style::default().fg(theme.text_muted)),
+                ]),
+                Line::from(vec![
+                    Span::styled("GW:  ", Style::default().fg(theme.text_muted)),
                     Span::styled(gw_display, Style::default().fg(theme.warning)),
                 ]),
                 Line::from(vec![
@@ -162,14 +190,18 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
                 ]),
             ]);
 
-            let col3 = Text::from(vec![
+            let col2 = Text::from(vec![
                 Line::from(vec![
                     Span::styled(format!("↓ {:.1} KB/s", iface.rx_rate_kbs), Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
                     Span::styled(" │ ", Style::default().fg(theme.border_inactive)),
                     Span::styled(format!("↑ {:.1} KB/s", iface.tx_rate_kbs), Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD)),
                 ]),
                 Line::from(Span::styled(
-                    format!("Total: ↓{}  ↑{}", format_net_bytes(iface.rx_bytes), format_net_bytes(iface.tx_bytes)),
+                    format!("Tot RX: ↓ {}", format_net_bytes(iface.rx_bytes)),
+                    Style::default().fg(theme.text_muted),
+                )),
+                Line::from(Span::styled(
+                    format!("Tot TX: ↑ {}", format_net_bytes(iface.tx_bytes)),
                     Style::default().fg(theme.text_muted),
                 )),
             ]);
@@ -178,26 +210,20 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
                 Cell::from(col0),
                 Cell::from(col1),
                 Cell::from(col2),
-                Cell::from(col3),
             ])
-            .height(2)
+            .height(3)
         });
 
         Table::new(
             rows,
             [
-                Constraint::Percentage(28),
-                Constraint::Percentage(14),
-                Constraint::Percentage(34),
+                Constraint::Percentage(36),
+                Constraint::Percentage(40),
                 Constraint::Percentage(24),
             ],
         )
         .header(header)
-        .block(
-            Block::default()
-                .title(Span::styled(" Network Adapters & Interfaces ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)))
-                .borders(Borders::NONE),
-        )
+        .block(Block::default().borders(Borders::NONE))
     };
 
     frame.render_widget(adapters_table, chunks[0]);

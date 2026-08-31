@@ -110,7 +110,7 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
         let left_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(10),     // CPU
+                Constraint::Length(12),     // CPU (Adequate space for Global load + all per-core gauges)
                 Constraint::Percentage(50), // Storage Volumes & Mounts
                 Constraint::Percentage(50), // Disk Health & SMART
             ])
@@ -135,12 +135,12 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(8), // CPU
-                Constraint::Length(7), // Storage Mounts
-                Constraint::Length(7), // SMART Disks
-                Constraint::Length(7), // Memory
-                Constraint::Length(6), // GPU
-                Constraint::Min(8),    // Top Processes
+                Constraint::Length(11), // CPU
+                Constraint::Length(7),  // Storage Mounts
+                Constraint::Length(7),  // SMART Disks
+                Constraint::Length(7),  // Memory
+                Constraint::Length(6),  // GPU
+                Constraint::Min(8),     // Top Processes
             ])
             .split(area);
 
@@ -166,7 +166,7 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
         let left_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(9),      // CPU
+                Constraint::Length(12),     // CPU (All cores displayed cleanly)
                 Constraint::Percentage(50), // Storage Volumes & Mounts
                 Constraint::Percentage(50), // Disk Health & SMART
             ])
