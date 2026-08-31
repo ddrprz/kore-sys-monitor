@@ -350,20 +350,22 @@ pub fn render_speed_test_panel(app: &App, frame: &mut Frame, area: Rect) {
         frame.render_widget(card_dl, cards[1]);
         frame.render_widget(card_ul, cards[2]);
     } else {
-        // Compact layout with server included
+        // Multi-line clean compact layout (No clipping)
         let text = vec![
             Line::from(vec![
                 Span::styled(format!(" {} ", status_icon), Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
                 Span::styled(status_label, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
-                Span::styled(" │ Srv: ", Style::default().fg(theme.text_muted)),
-                Span::styled(st.server_name.clone(), Style::default().fg(theme.primary)),
             ]),
             Line::from(vec![
-                Span::styled(" Ping: ", Style::default().fg(theme.text_muted)),
+                Span::styled(" 📍 Servidor: ", Style::default().fg(theme.text_muted)),
+                Span::styled(server_str, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(vec![
+                Span::styled(" ⚡ Ping: ", Style::default().fg(theme.text_muted)),
                 Span::styled(ping_str, Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
-                Span::styled(" │ ↓ Bajada: ", Style::default().fg(theme.text_muted)),
+                Span::styled("  │  ↓ Bajada: ", Style::default().fg(theme.text_muted)),
                 Span::styled(dl_str, Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
-                Span::styled(" │ ↑ Subida: ", Style::default().fg(theme.text_muted)),
+                Span::styled("  │  ↑ Subida: ", Style::default().fg(theme.text_muted)),
                 Span::styled(ul_str, Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD)),
             ]),
         ];
