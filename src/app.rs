@@ -5,19 +5,21 @@ use crate::theme::{Theme, ThemeVariant};
 pub enum Tab {
     Overview = 0,
     Processes = 1,
-    StorageNet = 2,
-    CpuDetail = 3,
-    GpuDetail = 4,
+    Storage = 2,
+    Network = 3,
+    CpuDetail = 4,
+    GpuDetail = 5,
 }
 
 impl Tab {
     pub fn from_index(index: usize) -> Self {
-        match index % 5 {
+        match index % 6 {
             0 => Tab::Overview,
             1 => Tab::Processes,
-            2 => Tab::StorageNet,
-            3 => Tab::CpuDetail,
-            4 => Tab::GpuDetail,
+            2 => Tab::Storage,
+            3 => Tab::Network,
+            4 => Tab::CpuDetail,
+            5 => Tab::GpuDetail,
             _ => Tab::Overview,
         }
     }
@@ -26,9 +28,10 @@ impl Tab {
         match self {
             Tab::Overview => "[1] Overview",
             Tab::Processes => "[2] Processes",
-            Tab::StorageNet => "[3] Storage & Net",
-            Tab::CpuDetail => "[4] CPU Detail",
-            Tab::GpuDetail => "[5] GPU Detail",
+            Tab::Storage => "[3] Storage",
+            Tab::Network => "[4] Network",
+            Tab::CpuDetail => "[5] CPU Detail",
+            Tab::GpuDetail => "[6] GPU Detail",
         }
     }
 
@@ -36,9 +39,10 @@ impl Tab {
         match self {
             Tab::Overview => "1:Over",
             Tab::Processes => "2:Proc",
-            Tab::StorageNet => "3:Disk",
-            Tab::CpuDetail => "4:CPU",
-            Tab::GpuDetail => "5:GPU",
+            Tab::Storage => "3:Disk",
+            Tab::Network => "4:Net",
+            Tab::CpuDetail => "5:CPU",
+            Tab::GpuDetail => "6:GPU",
         }
     }
 }
@@ -281,7 +285,7 @@ impl App {
     }
 
     pub fn previous_tab(&mut self) {
-        let idx = (self.active_tab as usize + 4) % 5;
+        let idx = (self.active_tab as usize + 5) % 6;
         self.active_tab = Tab::from_index(idx);
     }
 
@@ -353,7 +357,9 @@ mod tests {
         app.next_tab();
         assert_eq!(app.active_tab, Tab::Processes);
         app.next_tab();
-        assert_eq!(app.active_tab, Tab::StorageNet);
+        assert_eq!(app.active_tab, Tab::Storage);
+        app.next_tab();
+        assert_eq!(app.active_tab, Tab::Network);
         app.next_tab();
         assert_eq!(app.active_tab, Tab::CpuDetail);
         app.next_tab();

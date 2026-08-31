@@ -46,7 +46,8 @@ pub fn render(app: &App, frame: &mut Frame) {
     let tab_titles = vec![
         if is_small { Tab::Overview.compact_title() } else { Tab::Overview.title() },
         if is_small { Tab::Processes.compact_title() } else { Tab::Processes.title() },
-        if is_small { Tab::StorageNet.compact_title() } else { Tab::StorageNet.title() },
+        if is_small { Tab::Storage.compact_title() } else { Tab::Storage.title() },
+        if is_small { Tab::Network.compact_title() } else { Tab::Network.title() },
         if is_small { Tab::CpuDetail.compact_title() } else { Tab::CpuDetail.title() },
         if is_small { Tab::GpuDetail.compact_title() } else { Tab::GpuDetail.title() },
     ];
@@ -72,7 +73,8 @@ pub fn render(app: &App, frame: &mut Frame) {
     match app.active_tab {
         Tab::Overview => render_overview(app, frame, chunks[2]),
         Tab::Processes => processes::render(app, frame, chunks[2]),
-        Tab::StorageNet => render_storage_net(app, frame, chunks[2]),
+        Tab::Storage => storage::render_detail(app, frame, chunks[2]),
+        Tab::Network => network::render_detail(app, frame, chunks[2]),
         Tab::CpuDetail => cpu::render_detail(app, frame, chunks[2]),
         Tab::GpuDetail => gpu::render_detail(app, frame, chunks[2]),
     }
@@ -196,26 +198,6 @@ fn render_overview(app: &App, frame: &mut Frame, area: Rect) {
         memory::render(app, frame, right_top_chunks[0]);
         gpu::render_summary(app, frame, right_top_chunks[1]);
         processes::render(app, frame, right_chunks[1]);
-    }
-}
-
-fn render_storage_net(app: &App, frame: &mut Frame, area: Rect) {
-    if area.height >= 26 {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
-            .split(area);
-
-        storage::render(app, frame, chunks[0]);
-        network::render(app, frame, chunks[1]);
-    } else {
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
-
-        storage::render(app, frame, chunks[0]);
-        network::render(app, frame, chunks[1]);
     }
 }
 

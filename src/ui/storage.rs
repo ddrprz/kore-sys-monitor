@@ -20,6 +20,10 @@ fn format_gb_tb(gb: f64) -> String {
     }
 }
 
+pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
+    render(app, frame, area);
+}
+
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     if area.height >= 14 {
         let chunks = Layout::default()

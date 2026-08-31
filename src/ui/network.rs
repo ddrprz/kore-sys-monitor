@@ -1,10 +1,10 @@
 use crate::app::App;
-use crate::system::SpeedTestState;
+use crate::system::{ConnectionMedium, SpeedTestState};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
-    text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Sparkline, Table},
+    text::{Line, Span},
+    widgets::{Block, BorderType, Borders, Paragraph, Sparkline},
     Frame,
 };
 
@@ -18,6 +18,10 @@ fn format_net_bytes(bytes: u64) -> String {
     } else {
         format!("{} B", bytes)
     }
+}
+
+pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
+    render(app, frame, area);
 }
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
@@ -39,247 +43,132 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         return;
     }
 
-    // Determine layout: Adapters Table, Sparklines, and Speed Test section
-    let sparkline_height = if inner.height >= 22 { 4 } else { 3 };
-    let speed_test_height = if inner.height >= 18 { 6 } else if inner.height >= 12 { 5 } else { 4 };
+    // Determine layout: Connection Summary (WiFi/Cable, SSID, Gateway), Speed Test, and Traffic Sparklines
+    let summary_height = if inner.height >= 24 { 6 } else if inner.height >= 18 { 5 } else { 4 };
+    let speed_test_height = if inner.height >= 22 { 7 } else if inner.height >= 14 { 6 } else { 4 };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(4),                   // Adapters Table
-            Constraint::Length(speed_test_height), // Speed Test Panel (Ordered before RX/TX)
-            Constraint::Length(sparkline_height),  // Traffic Sparklines (RX/TX)
+            Constraint::Length(summary_height),   // Simplified Connection Summary (WiFi/Cable, Network Name, Gateway)
+            Constraint::Length(speed_test_height), // Speed Test Interactive Panel
+            Constraint::Min(4),                   // Live Traffic Sparklines (RX / TX)
         ])
         .split(inner);
 
-    // 1. Connected Network Adapters Table (Multi-line layout to avoid any text clipping)
-    let is_wide_table = inner.width >= 130;
+    // 1. Connection Summary Section (Medium, SSID, Gateway)
+    render_connection_summary(app, frame, chunks[0]);
 
-    let adapters_table = if is_wide_table {
-        let header_cells = [
-            "Adapter / Hardware Model",
-            "Status",
-            "IP Address",
-            "Gateway / DNS",
-            "RX Rate",
-            "TX Rate",
-            "Total RX / TX",
-        ]
-        .iter()
-        .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
-        let header = Row::new(header_cells).height(1);
-
-        let rows = app.metrics.network_interfaces.iter().take(8).map(|iface| {
-            let is_connected = iface.is_up || (iface.ip_address != "-" && !iface.ip_address.is_empty());
-            let (status_symbol, status_text, status_color) = if is_connected {
-                ("●", " CONNECTED", theme.success)
-            } else {
-                ("○", " IDLE", theme.text_muted)
-            };
-
-            let ip_display = if iface.ip_address.is_empty() { "-" } else { &iface.ip_address };
-            let gw_display = if iface.gateway.is_empty() { "-" } else { &iface.gateway };
-            let dns_display = if iface.dns_servers.is_empty() { "-" } else { &iface.dns_servers };
-
-            let col_model = Text::from(vec![
-                Line::from(Span::styled(iface.model.clone(), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))),
-                Line::from(Span::styled(format!("Dev: {}", iface.name), Style::default().fg(theme.text_muted))),
-            ]);
-
-            let col_status = Text::from(vec![
-                Line::from(Span::styled(format!("{}{}", status_symbol, status_text), Style::default().fg(status_color).add_modifier(Modifier::BOLD))),
-                Line::from(Span::styled(if is_connected { "Active Link" } else { "No Carrier" }, Style::default().fg(theme.text_muted))),
-            ]);
-
-            let col_ip = Text::from(vec![
-                Line::from(Span::styled(ip_display.to_string(), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))),
-                Line::from(Span::styled("IPv4 / IPv6", Style::default().fg(theme.text_muted))),
-            ]);
-
-            let col_net = Text::from(vec![
-                Line::from(vec![
-                    Span::styled("GW: ", Style::default().fg(theme.text_muted)),
-                    Span::styled(gw_display.to_string(), Style::default().fg(theme.warning)),
-                ]),
-                Line::from(vec![
-                    Span::styled("DNS: ", Style::default().fg(theme.text_muted)),
-                    Span::styled(dns_display.to_string(), Style::default().fg(theme.secondary)),
-                ]),
-            ]);
-
-            let col_rx = Text::from(vec![
-                Line::from(Span::styled(format!("↓ {:.1} KB/s", iface.rx_rate_kbs), Style::default().fg(theme.success).add_modifier(Modifier::BOLD))),
-            ]);
-
-            let col_tx = Text::from(vec![
-                Line::from(Span::styled(format!("↑ {:.1} KB/s", iface.tx_rate_kbs), Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD))),
-            ]);
-
-            let col_total = Text::from(vec![
-                Line::from(Span::styled(format!("↓ {}", format_net_bytes(iface.rx_bytes)), Style::default().fg(theme.text_muted))),
-                Line::from(Span::styled(format!("↑ {}", format_net_bytes(iface.tx_bytes)), Style::default().fg(theme.text_muted))),
-            ]);
-
-            Row::new(vec![
-                Cell::from(col_model),
-                Cell::from(col_status),
-                Cell::from(col_ip),
-                Cell::from(col_net),
-                Cell::from(col_rx),
-                Cell::from(col_tx),
-                Cell::from(col_total),
-            ])
-            .height(2)
-        });
-
-        Table::new(
-            rows,
-            [
-                Constraint::Percentage(26),
-                Constraint::Percentage(13),
-                Constraint::Percentage(15),
-                Constraint::Percentage(20),
-                Constraint::Percentage(8),
-                Constraint::Percentage(8),
-                Constraint::Percentage(10),
-            ],
-        )
-        .header(header)
-        .block(Block::default().borders(Borders::NONE))
-    } else {
-        // Multi-Line (3-line) Layout for standard/compact terminals to completely prevent clipping
-        let header_cells = [
-            "Adapter & Link Status",
-            "Network Configuration (IP / Gateway / DNS)",
-            "Traffic & Bandwidth",
-        ]
-        .iter()
-        .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
-        let header = Row::new(header_cells).height(1);
-
-        let rows = app.metrics.network_interfaces.iter().take(6).map(|iface| {
-            let is_connected = iface.is_up || (iface.ip_address != "-" && !iface.ip_address.is_empty());
-            let (status_symbol, status_text, status_color) = if is_connected {
-                ("●", " CONNECTED (Active Link)", theme.success)
-            } else {
-                ("○", " IDLE (No Carrier)", theme.text_muted)
-            };
-
-            let ip_display = if iface.ip_address.is_empty() { "-" } else { &iface.ip_address };
-            let gw_display = if iface.gateway.is_empty() { "-" } else { &iface.gateway };
-            let dns_display = if iface.dns_servers.is_empty() { "-" } else { &iface.dns_servers };
-
-            let col0 = Text::from(vec![
-                Line::from(Span::styled(iface.model.clone(), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))),
-                Line::from(Span::styled(format!("Dev: {}", iface.name), Style::default().fg(theme.text_muted))),
-                Line::from(Span::styled(format!("{}{}", status_symbol, status_text), Style::default().fg(status_color).add_modifier(Modifier::BOLD))),
-            ]);
-
-            let col1 = Text::from(vec![
-                Line::from(vec![
-                    Span::styled("IP:  ", Style::default().fg(theme.text_muted)),
-                    Span::styled(ip_display, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
-                ]),
-                Line::from(vec![
-                    Span::styled("GW:  ", Style::default().fg(theme.text_muted)),
-                    Span::styled(gw_display, Style::default().fg(theme.warning)),
-                ]),
-                Line::from(vec![
-                    Span::styled("DNS: ", Style::default().fg(theme.text_muted)),
-                    Span::styled(dns_display, Style::default().fg(theme.secondary)),
-                ]),
-            ]);
-
-            let col2 = Text::from(vec![
-                Line::from(vec![
-                    Span::styled(format!("↓ {:.1} KB/s", iface.rx_rate_kbs), Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
-                    Span::styled(" │ ", Style::default().fg(theme.border_inactive)),
-                    Span::styled(format!("↑ {:.1} KB/s", iface.tx_rate_kbs), Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD)),
-                ]),
-                Line::from(Span::styled(
-                    format!("Tot RX: ↓ {}", format_net_bytes(iface.rx_bytes)),
-                    Style::default().fg(theme.text_muted),
-                )),
-                Line::from(Span::styled(
-                    format!("Tot TX: ↑ {}", format_net_bytes(iface.tx_bytes)),
-                    Style::default().fg(theme.text_muted),
-                )),
-            ]);
-
-            Row::new(vec![
-                Cell::from(col0),
-                Cell::from(col1),
-                Cell::from(col2),
-            ])
-            .height(3)
-        });
-
-        Table::new(
-            rows,
-            [
-                Constraint::Percentage(36),
-                Constraint::Percentage(40),
-                Constraint::Percentage(24),
-            ],
-        )
-        .header(header)
-        .block(Block::default().borders(Borders::NONE))
-    };
-
-    frame.render_widget(adapters_table, chunks[0]);
-
-    // 2. Render Speed Test Section directly above Traffic Sparklines
+    // 2. Speed Test Section
     render_speed_test_panel(app, frame, chunks[1]);
 
-    // 3. Render Sparklines (Side-by-side on wide screens, stacked on narrow)
-    let is_wide_screen = inner.width >= 100;
-    let rx_data: Vec<u64> = app.metrics.rx_history.iter().copied().collect();
-    let tx_data: Vec<u64> = app.metrics.tx_history.iter().copied().collect();
+    // 3. Traffic Sparklines
+    render_sparklines(app, frame, chunks[2]);
+}
 
-    let rx_block = Block::default().title(Span::styled(
-        format!(
-            " RX: {:.2} KB/s │ Total: {} ",
-            app.metrics.rx_rate_kbs,
-            format_net_bytes(app.metrics.total_rx_bytes)
-        ),
-        Style::default().fg(theme.success).add_modifier(Modifier::BOLD),
-    ));
+fn render_connection_summary(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
 
-    let rx_sparkline = Sparkline::default()
-        .block(rx_block)
-        .data(&rx_data)
-        .style(Style::default().fg(theme.success));
+    let medium_str = app.metrics.primary_medium.as_str();
 
-    let tx_block = Block::default().title(Span::styled(
-        format!(
-            " TX: {:.2} KB/s │ Total: {} ",
-            app.metrics.tx_rate_kbs,
-            format_net_bytes(app.metrics.total_tx_bytes)
-        ),
-        Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD),
-    ));
+    let (medium_icon, medium_color) = match app.metrics.primary_medium {
+        ConnectionMedium::WiFi => ("📶", theme.success),
+        ConnectionMedium::Cable => ("🔌", theme.primary),
+        ConnectionMedium::Virtual => ("🖧", theme.warning),
+        ConnectionMedium::Disconnected => ("❌", theme.critical),
+    };
 
-    let tx_sparkline = Sparkline::default()
-        .block(tx_block)
-        .data(&tx_data)
-        .style(Style::default().fg(theme.secondary));
+    let network_name = &app.metrics.primary_network_name;
+    let gateway = &app.metrics.primary_gateway;
+    let local_ip = &app.metrics.primary_ip;
 
-    if is_wide_screen {
-        let spark_cols = Layout::default()
+    let is_wide = area.width >= 80;
+
+    if is_wide && area.height >= 4 {
+        // 3 Cards: Tipo de Conexión, Red / SSID, Gateway
+        let cards = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[2]);
+            .constraints([
+                Constraint::Percentage(33),
+                Constraint::Percentage(34),
+                Constraint::Percentage(33),
+            ])
+            .split(area);
 
-        frame.render_widget(rx_sparkline, spark_cols[0]);
-        frame.render_widget(tx_sparkline, spark_cols[1]);
+        // Card 1: Medio / Tipo de Conexión
+        let p_medium = Paragraph::new(vec![
+            Line::from(Span::styled(" TIPO DE CONEXIÓN", Style::default().fg(theme.text_muted))),
+            Line::from(vec![
+                Span::styled(format!(" {} ", medium_icon), Style::default().fg(medium_color)),
+                Span::styled(medium_str, Style::default().fg(medium_color).add_modifier(Modifier::BOLD)),
+            ]),
+        ])
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(theme.border_inactive)),
+        );
+
+        // Card 2: Nombre de la Red (SSID)
+        let p_network = Paragraph::new(vec![
+            Line::from(Span::styled(" NOMBRE DE LA RED (SSID)", Style::default().fg(theme.text_muted))),
+            Line::from(vec![
+                Span::styled(" 🌐 ", Style::default().fg(theme.primary)),
+                Span::styled(network_name, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+            ]),
+        ])
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(theme.border_inactive)),
+        );
+
+        // Card 3: Gateway (Puerta de Enlace)
+        let p_gateway = Paragraph::new(vec![
+            Line::from(Span::styled(" GATEWAY (PUERTA DE ENLACE)", Style::default().fg(theme.text_muted))),
+            Line::from(vec![
+                Span::styled(" 🚪 ", Style::default().fg(theme.warning)),
+                Span::styled(gateway, Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
+            ]),
+        ])
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(theme.border_inactive)),
+        );
+
+        frame.render_widget(p_medium, cards[0]);
+        frame.render_widget(p_network, cards[1]);
+        frame.render_widget(p_gateway, cards[2]);
     } else {
-        let spark_rows = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[2]);
+        // Compact multi-line summary layout
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.border_inactive));
 
-        frame.render_widget(rx_sparkline, spark_rows[0]);
-        frame.render_widget(tx_sparkline, spark_rows[1]);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+
+        let lines = vec![
+            Line::from(vec![
+                Span::styled(format!(" {} Conexión: ", medium_icon), Style::default().fg(theme.text_muted)),
+                Span::styled(medium_str, Style::default().fg(medium_color).add_modifier(Modifier::BOLD)),
+                Span::styled(" │ Red: ", Style::default().fg(theme.text_muted)),
+                Span::styled(network_name, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(vec![
+                Span::styled(" 🚪 Gateway: ", Style::default().fg(theme.text_muted)),
+                Span::styled(gateway, Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
+                Span::styled(" │ IP Local: ", Style::default().fg(theme.text_muted)),
+                Span::styled(local_ip, Style::default().fg(theme.secondary)),
+            ]),
+        ];
+
+        frame.render_widget(Paragraph::new(lines), inner);
     }
 }
 
@@ -309,10 +198,11 @@ pub fn render_speed_test_panel(app: &App, frame: &mut Frame, area: Rect) {
 
     let block = Block::default()
         .title(Span::styled(
-            " Network Speed Test [e] ",
+            " Speed Test de Red [e] ",
             Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
         ))
-        .borders(Borders::TOP)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.border_inactive));
 
     let inner = block.inner(area);
@@ -327,14 +217,13 @@ pub fn render_speed_test_panel(app: &App, frame: &mut Frame, area: Rect) {
     let ul_str = st.upload_mbps.map(|u| format!("{:.1} Mbps", u)).unwrap_or_else(|| "-- Mbps".to_string());
     let server_str = format!("{} ({})", st.server_name, st.server_location);
 
-    if area.width >= 95 && inner.height >= 3 {
-        // Multi-card layout on wide views
+    if area.width >= 90 && inner.height >= 3 {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(2)])
             .split(inner);
 
-        // Status line with Server prominent
+        // Status line
         let status_line = Line::from(vec![
             Span::styled(format!(" {} ", status_icon), Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
             Span::styled("Estado: ", Style::default().fg(theme.text_muted)),
@@ -376,7 +265,7 @@ pub fn render_speed_test_panel(app: &App, frame: &mut Frame, area: Rect) {
         frame.render_widget(card_dl, cards[1]);
         frame.render_widget(card_ul, cards[2]);
     } else {
-        // Multi-line clean compact layout (No clipping)
+        // Compact format
         let text = vec![
             Line::from(vec![
                 Span::styled(format!(" {} ", status_icon), Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
@@ -389,12 +278,74 @@ pub fn render_speed_test_panel(app: &App, frame: &mut Frame, area: Rect) {
             Line::from(vec![
                 Span::styled(" ⚡ Ping: ", Style::default().fg(theme.text_muted)),
                 Span::styled(ping_str, Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
-                Span::styled("  │  ↓ Bajada: ", Style::default().fg(theme.text_muted)),
+                Span::styled("  │  ↓: ", Style::default().fg(theme.text_muted)),
                 Span::styled(dl_str, Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
-                Span::styled("  │  ↑ Subida: ", Style::default().fg(theme.text_muted)),
+                Span::styled("  │  ↑: ", Style::default().fg(theme.text_muted)),
                 Span::styled(ul_str, Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD)),
             ]),
         ];
         frame.render_widget(Paragraph::new(text), inner);
+    }
+}
+
+fn render_sparklines(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
+    let is_wide_screen = area.width >= 100;
+
+    let rx_data: Vec<u64> = app.metrics.rx_history.iter().copied().collect();
+    let tx_data: Vec<u64> = app.metrics.tx_history.iter().copied().collect();
+
+    let rx_block = Block::default()
+        .title(Span::styled(
+            format!(
+                " Tráfico Descarga (RX): {:.2} KB/s │ Total: {} ",
+                app.metrics.rx_rate_kbs,
+                format_net_bytes(app.metrics.total_rx_bytes)
+            ),
+            Style::default().fg(theme.success).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.border_inactive));
+
+    let rx_sparkline = Sparkline::default()
+        .block(rx_block)
+        .data(&rx_data)
+        .style(Style::default().fg(theme.success));
+
+    let tx_block = Block::default()
+        .title(Span::styled(
+            format!(
+                " Tráfico Subida (TX): {:.2} KB/s │ Total: {} ",
+                app.metrics.tx_rate_kbs,
+                format_net_bytes(app.metrics.total_tx_bytes)
+            ),
+            Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.border_inactive));
+
+    let tx_sparkline = Sparkline::default()
+        .block(tx_block)
+        .data(&tx_data)
+        .style(Style::default().fg(theme.secondary));
+
+    if is_wide_screen {
+        let spark_cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(area);
+
+        frame.render_widget(rx_sparkline, spark_cols[0]);
+        frame.render_widget(tx_sparkline, spark_cols[1]);
+    } else {
+        let spark_rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(area);
+
+        frame.render_widget(rx_sparkline, spark_rows[0]);
+        frame.render_widget(tx_sparkline, spark_rows[1]);
     }
 }
