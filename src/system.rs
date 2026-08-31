@@ -833,12 +833,291 @@ fn detect_motherboard() -> MotherboardInfo {
     }
 }
 
+pub fn resolve_ram_manufacturer(raw: &str, part_number: &str) -> String {
+    let clean_raw = raw.trim().trim_matches('"').trim();
+    let lower_raw = clean_raw.to_lowercase();
+    let part_upper = part_number.trim().to_uppercase();
+
+    // 1. Direct JEDEC Hex IDs common in OEM / laptop BIOS
+    match lower_raw.as_str() {
+        "04cb" | "4cb" => return "ADATA".to_string(),
+        "0198" | "198" => return "Kingston".to_string(),
+        "029e" | "29e" => return "Corsair".to_string(),
+        "80ad" | "00ad" | "1315" | "0150" | "ad00" => return "SK Hynix".to_string(),
+        "802c" | "002c" | "2c00" | "014f" => return "Micron".to_string(),
+        "80ce" | "00ce" | "ce00" => return "Samsung".to_string(),
+        "059b" | "59b" | "06c3" => return "Crucial".to_string(),
+        "04cd" | "4cd" => return "G.Skill".to_string(),
+        "070b" | "70b" => return "Patriot".to_string(),
+        "05cd" | "5cd" => return "TeamGroup".to_string(),
+        "02ba" | "2ba" => return "Silicon Power".to_string(),
+        "0834" | "834" => return "Klevv".to_string(),
+        _ => {}
+    }
+
+    // 2. Known vendor substring matching
+    if lower_raw.contains("samsung") {
+        return "Samsung".to_string();
+    }
+    if lower_raw.contains("hynix") || lower_raw.contains("hyundai") {
+        return "SK Hynix".to_string();
+    }
+    if lower_raw.contains("micron") {
+        return "Micron".to_string();
+    }
+    if lower_raw.contains("crucial") {
+        return "Crucial".to_string();
+    }
+    if lower_raw.contains("kingston") {
+        return "Kingston".to_string();
+    }
+    if lower_raw.contains("corsair") {
+        return "Corsair".to_string();
+    }
+    if lower_raw.contains("g.skill") || lower_raw.contains("gskill") {
+        return "G.Skill".to_string();
+    }
+    if lower_raw.contains("adata") || lower_raw.contains("a-data") {
+        return "ADATA".to_string();
+    }
+    if lower_raw.contains("patriot") {
+        return "Patriot".to_string();
+    }
+    if lower_raw.contains("silicon power") {
+        return "Silicon Power".to_string();
+    }
+    if lower_raw.contains("team") || lower_raw.contains("teamgroup") {
+        return "TeamGroup".to_string();
+    }
+    if lower_raw.contains("klevv") {
+        return "Klevv".to_string();
+    }
+    if lower_raw.contains("transcend") {
+        return "Transcend".to_string();
+    }
+    if lower_raw.contains("apacer") {
+        return "Apacer".to_string();
+    }
+    if lower_raw.contains("ramaxel") {
+        return "Ramaxel".to_string();
+    }
+    if lower_raw.contains("nanya") {
+        return "Nanya".to_string();
+    }
+    if lower_raw.contains("apple") {
+        return "Apple".to_string();
+    }
+    if lower_raw.contains("lenovo") {
+        return "Lenovo".to_string();
+    }
+    if lower_raw.contains("dell") {
+        return "Dell".to_string();
+    }
+    if lower_raw.contains("hp") || lower_raw.contains("hewlett") {
+        return "HP".to_string();
+    }
+
+    // 3. Fallback to PartNumber prefix when Manufacturer is generic or empty
+    let is_generic = clean_raw.is_empty()
+        || clean_raw == "0"
+        || clean_raw == "0000"
+        || lower_raw == "unknown"
+        || lower_raw == "none"
+        || lower_raw == "undefined"
+        || lower_raw == "manufacturer"
+        || lower_raw == "standard"
+        || clean_raw.chars().all(|c| c.is_ascii_hexdigit());
+
+    if is_generic && !part_upper.is_empty() {
+        if part_upper.starts_with("M3") || part_upper.starts_with("M4") || part_upper.starts_with("K4") || part_upper.starts_with("SEC") {
+            return "Samsung".to_string();
+        }
+        if part_upper.starts_with("HMA") || part_upper.starts_with("HMT") || part_upper.starts_with("HMC") || part_upper.starts_with("HMAB") || part_upper.starts_with("HYNIX") {
+            return "SK Hynix".to_string();
+        }
+        if part_upper.starts_with("MTA") || part_upper.starts_with("MT4") || part_upper.starts_with("MT8") || part_upper.starts_with("MT16") {
+            return "Micron".to_string();
+        }
+        if part_upper.starts_with("CT") {
+            return "Crucial".to_string();
+        }
+        if part_upper.starts_with("KVR") || part_upper.starts_with("KF") || part_upper.starts_with("HX") || part_upper.starts_with("KHX") {
+            return "Kingston".to_string();
+        }
+        if part_upper.starts_with("AD4") || part_upper.starts_with("AD5") || part_upper.starts_with("AX4") || part_upper.starts_with("AX5") {
+            return "ADATA".to_string();
+        }
+        if part_upper.starts_with("CMS") || part_upper.starts_with("CMK") || part_upper.starts_with("CMW") || part_upper.starts_with("CMT") {
+            return "Corsair".to_string();
+        }
+        if part_upper.starts_with("F4-") || part_upper.starts_with("F5-") || part_upper.starts_with("F3-") {
+            return "G.Skill".to_string();
+        }
+        if part_upper.starts_with("RMS") || part_upper.starts_with("RMA") {
+            return "Ramaxel".to_string();
+        }
+        if part_upper.starts_with("NT") {
+            return "Nanya".to_string();
+        }
+    }
+
+    if !clean_raw.is_empty() && !is_generic {
+        clean_raw.to_string()
+    } else {
+        "Standard RAM".to_string()
+    }
+}
+
+pub fn resolve_ram_type(
+    smbios_code: u32,
+    memory_type_code: u32,
+    form_factor: u32,
+    speed_mhz: u32,
+    part_number: &str,
+) -> String {
+    let is_sodimm = form_factor == 12
+        || part_number.to_uppercase().contains("SODIMM")
+        || part_number.to_uppercase().contains("SO-DIMM");
+
+    // 1. Check direct SMBIOS code
+    match smbios_code {
+        20 => return if is_sodimm { "DDR SODIMM".to_string() } else { "DDR".to_string() },
+        21 => return if is_sodimm { "DDR2 SODIMM".to_string() } else { "DDR2".to_string() },
+        24 => return if is_sodimm { "DDR3 SODIMM".to_string() } else { "DDR3".to_string() },
+        26 => return if is_sodimm { "DDR4 SODIMM".to_string() } else { "DDR4".to_string() },
+        27 => return "LPDDR".to_string(),
+        28 => return "LPDDR2".to_string(),
+        29 => return "LPDDR3".to_string(),
+        30 => return "LPDDR4".to_string(),
+        31 => return "Non-Volatile RAM".to_string(),
+        32 => return "HBM".to_string(),
+        33 => return "HBM2".to_string(),
+        34 => return if is_sodimm { "DDR5 SODIMM".to_string() } else { "DDR5".to_string() },
+        35 => return "LPDDR5".to_string(),
+        36 => return "HBM3".to_string(),
+        _ => {}
+    }
+
+    // 2. Check fallback memory_type_code
+    match memory_type_code {
+        20 => return if is_sodimm { "DDR SODIMM".to_string() } else { "DDR".to_string() },
+        21 => return if is_sodimm { "DDR2 SODIMM".to_string() } else { "DDR2".to_string() },
+        24 => return if is_sodimm { "DDR3 SODIMM".to_string() } else { "DDR3".to_string() },
+        26 => return if is_sodimm { "DDR4 SODIMM".to_string() } else { "DDR4".to_string() },
+        _ => {}
+    }
+
+    // 3. Inspect part number for DDR hints
+    let part_upper = part_number.to_uppercase();
+    if part_upper.contains("LPDDR5") {
+        return "LPDDR5".to_string();
+    }
+    if part_upper.contains("LPDDR4") {
+        return "LPDDR4".to_string();
+    }
+    if part_upper.contains("DDR5") || part_upper.contains("PC5") || part_upper.contains("-4800") || part_upper.contains("-5600") {
+        return if is_sodimm { "DDR5 SODIMM".to_string() } else { "DDR5".to_string() };
+    }
+    if part_upper.contains("DDR4") || part_upper.contains("PC4") || part_upper.contains("-2133") || part_upper.contains("-2400") || part_upper.contains("-2666") || part_upper.contains("-3200") {
+        return if is_sodimm { "DDR4 SODIMM".to_string() } else { "DDR4".to_string() };
+    }
+    if part_upper.contains("DDR3") || part_upper.contains("PC3") {
+        return if is_sodimm { "DDR3 SODIMM".to_string() } else { "DDR3".to_string() };
+    }
+
+    // 4. Frequency heuristic (especially useful when laptop BIOS omits SMBIOS type)
+    if speed_mhz >= 6400 {
+        if is_sodimm {
+            "DDR5 SODIMM".to_string()
+        } else if form_factor == 0 || form_factor == 1 || form_factor == 13 {
+            "LPDDR5".to_string()
+        } else {
+            "DDR5".to_string()
+        }
+    } else if speed_mhz >= 4800 {
+        if is_sodimm { "DDR5 SODIMM".to_string() } else { "DDR5".to_string() }
+    } else if (2133..=4400).contains(&speed_mhz) {
+        if is_sodimm { "DDR4 SODIMM".to_string() } else { "DDR4".to_string() }
+    } else if (800..=1866).contains(&speed_mhz) {
+        if is_sodimm { "DDR3 SODIMM".to_string() } else { "DDR3".to_string() }
+    } else if (400..=800).contains(&speed_mhz) {
+        if is_sodimm { "DDR2 SODIMM".to_string() } else { "DDR2".to_string() }
+    } else if is_sodimm {
+        "DDR SODIMM".to_string()
+    } else {
+        "DDR RAM".to_string()
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn detect_ram_details_linux() -> Option<RamDetails> {
     use std::fs;
     use std::process::Command;
 
-    // Tier 1: Try Sysfs EDAC (Error Detection and Correction) memory controllers
+    // Tier 1: Try `dmidecode -t memory` (if available and accessible)
+    if let Ok(output) = Command::new("dmidecode").args(["-t", "memory"]).output()
+        && output.status.success() {
+            let text = String::from_utf8_lossy(&output.stdout);
+            let mut mem_type = String::new();
+            let mut speed = String::new();
+            let mut manufacturer = String::new();
+            let mut form_factor = String::new();
+            let mut part_number = String::new();
+
+            for line in text.lines() {
+                let trimmed = line.trim();
+                let line_lower = trimmed.to_lowercase();
+
+                if line_lower.starts_with("type:") && mem_type.is_empty() {
+                    let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+                    if !val.is_empty() && !val.eq_ignore_ascii_case("unknown") && !val.eq_ignore_ascii_case("none") {
+                        mem_type = val.to_string();
+                    }
+                }
+                if line_lower.starts_with("form factor:") && form_factor.is_empty() {
+                    let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+                    form_factor = val.to_string();
+                }
+                if (line_lower.starts_with("speed:") || line_lower.starts_with("configured memory speed:")) && speed.is_empty() {
+                    let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+                    if !val.is_empty() && !val.eq_ignore_ascii_case("unknown") && !val.starts_with("0") {
+                        speed = val.to_string();
+                    }
+                }
+                if line_lower.starts_with("manufacturer:") && manufacturer.is_empty() {
+                    let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+                    if !val.is_empty() && !val.eq_ignore_ascii_case("unknown") && !val.starts_with("0x0000") {
+                        manufacturer = val.to_string();
+                    }
+                }
+                if line_lower.starts_with("part number:") && part_number.is_empty() {
+                    let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+                    part_number = val.to_string();
+                }
+            }
+
+            let mfr_resolved = resolve_ram_manufacturer(&manufacturer, &part_number);
+            let is_sodimm = form_factor.to_lowercase().contains("sodimm") || form_factor.to_lowercase().contains("so-dimm");
+            let final_mem_type = if !mem_type.is_empty() {
+                if is_sodimm && !mem_type.to_lowercase().contains("sodimm") {
+                    format!("{} SODIMM", mem_type)
+                } else {
+                    mem_type
+                }
+            } else {
+                "DDR RAM".to_string()
+            };
+
+            if !final_mem_type.is_empty() || !speed.is_empty() {
+                return Some(RamDetails {
+                    memory_type: final_mem_type,
+                    speed_mhz: if speed.is_empty() { "N/A".to_string() } else { speed },
+                    manufacturer: mfr_resolved,
+                });
+            }
+        }
+
+    // Tier 2: Try Sysfs EDAC memory controllers
     if let Ok(entries) = fs::read_dir("/sys/devices/system/edac/mc") {
         for entry in entries.flatten() {
             let mc_name_path = entry.path().join("mc_name");
@@ -860,70 +1139,7 @@ fn detect_ram_details_linux() -> Option<RamDetails> {
         }
     }
 
-    // Tier 2: Try `dmidecode -t memory` (if available and accessible)
-    if let Ok(output) = Command::new("dmidecode").args(["-t", "memory"]).output()
-        && output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout);
-            let mut mem_type = String::new();
-            let mut speed = String::new();
-            let mut manufacturer = String::new();
-
-            for line in text.lines() {
-                let trimmed = line.trim();
-                let line_lower = trimmed.to_lowercase();
-
-                if line_lower.starts_with("type:") && mem_type.is_empty() {
-                    let val = trimmed.split(':').nth(1).unwrap_or("").trim();
-                    if !val.is_empty() && !val.eq_ignore_ascii_case("unknown") && !val.eq_ignore_ascii_case("none") {
-                        mem_type = val.to_string();
-                    }
-                }
-                if line_lower.starts_with("speed:") && speed.is_empty() {
-                    let val = trimmed.split(':').nth(1).unwrap_or("").trim();
-                    if !val.is_empty() && !val.eq_ignore_ascii_case("unknown") {
-                        speed = val.to_string();
-                    }
-                }
-                if line_lower.starts_with("manufacturer:") && manufacturer.is_empty() {
-                    let val = trimmed.split(':').nth(1).unwrap_or("").trim();
-                    if !val.is_empty() && !val.eq_ignore_ascii_case("unknown") {
-                        manufacturer = val.to_string();
-                    }
-                }
-            }
-
-            if !mem_type.is_empty() || !speed.is_empty() {
-                return Some(RamDetails {
-                    memory_type: if mem_type.is_empty() { "DDR RAM".to_string() } else { mem_type },
-                    speed_mhz: if speed.is_empty() { "N/A".to_string() } else { speed },
-                    manufacturer: if manufacturer.is_empty() { "Standard RAM".to_string() } else { manufacturer },
-                });
-            }
-        }
-
-    // Tier 3: Try `lshw -C memory` (if available)
-    if let Ok(output) = Command::new("lshw").args(["-C", "memory", "-short"]).output()
-        && output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout);
-            for line in text.lines() {
-                let line_lower = line.to_lowercase();
-                if line_lower.contains("system memory") || line_lower.contains("dimm") {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 3 {
-                        let desc = parts[2..].join(" ");
-                        if !desc.is_empty() {
-                            return Some(RamDetails {
-                                memory_type: desc,
-                                speed_mhz: "N/A".to_string(),
-                                manufacturer: "System Memory".to_string(),
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-    // Tier 4: Fallback to `inxi -m`
+    // Tier 3: Try `inxi -m`
     if let Ok(output) = Command::new("inxi").arg("-m").output()
         && output.status.success() {
             let text = String::from_utf8_lossy(&output.stdout);
@@ -963,12 +1179,141 @@ fn detect_ram_details_linux() -> Option<RamDetails> {
                 return Some(RamDetails {
                     memory_type: if mem_type.is_empty() { "DDR RAM".to_string() } else { mem_type },
                     speed_mhz: if speed.is_empty() { "N/A".to_string() } else { speed },
-                    manufacturer: if manufacturer.is_empty() { "Standard RAM".to_string() } else { manufacturer },
+                    manufacturer: resolve_ram_manufacturer(&manufacturer, ""),
                 });
             }
         }
 
     None
+}
+
+#[cfg(target_os = "windows")]
+fn detect_ram_details_windows() -> Option<RamDetails> {
+    use std::process::Command;
+
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "Get-CimInstance Win32_PhysicalMemory | ForEach-Object { \"$($_.Manufacturer);;$($_.Speed);;$($_.ConfiguredClockSpeed);;$($_.SMBIOSMemoryType);;$($_.MemoryType);;$($_.FormFactor);;$($_.PartNumber)\" }"
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = trimmed.split(";;").map(|s| s.trim()).collect();
+        if parts.len() >= 4 {
+            let raw_mfr = parts[0];
+            let speed_raw = parts.get(1).unwrap_or(&"").parse::<u32>().unwrap_or(0);
+            let conf_speed_raw = parts.get(2).unwrap_or(&"").parse::<u32>().unwrap_or(0);
+            let smbios_code = parts.get(3).unwrap_or(&"").parse::<u32>().unwrap_or(0);
+            let memory_type_code = parts.get(4).unwrap_or(&"").parse::<u32>().unwrap_or(0);
+            let form_factor = parts.get(5).unwrap_or(&"").parse::<u32>().unwrap_or(0);
+            let part_number = parts.get(6).unwrap_or(&"");
+
+            // Prefer ConfiguredClockSpeed when available as it's the actual running speed on laptops
+            let effective_speed = if conf_speed_raw > 0 {
+                conf_speed_raw
+            } else {
+                speed_raw
+            };
+
+            let manufacturer = resolve_ram_manufacturer(raw_mfr, part_number);
+            let memory_type = resolve_ram_type(smbios_code, memory_type_code, form_factor, effective_speed, part_number);
+            let speed_mhz = if effective_speed > 0 {
+                format!("{} MHz", effective_speed)
+            } else {
+                "N/A".to_string()
+            };
+
+            return Some(RamDetails {
+                memory_type,
+                speed_mhz,
+                manufacturer,
+            });
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn detect_ram_details_macos() -> Option<RamDetails> {
+    use std::process::Command;
+
+    let output = Command::new("system_profiler")
+        .arg("SPMemoryDataType")
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut mem_type = String::new();
+    let mut speed = String::new();
+    let mut manufacturer = String::new();
+    let mut part_number = String::new();
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        let lower = trimmed.to_lowercase();
+
+        if lower.starts_with("type:") && mem_type.is_empty() {
+            let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+            if !val.is_empty() {
+                mem_type = val.to_string();
+            }
+        }
+        if lower.starts_with("speed:") && speed.is_empty() {
+            let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+            if !val.is_empty() {
+                speed = val.to_string();
+            }
+        }
+        if lower.starts_with("manufacturer:") && manufacturer.is_empty() {
+            let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+            if !val.is_empty() {
+                manufacturer = val.to_string();
+            }
+        }
+        if lower.starts_with("part number:") && part_number.is_empty() {
+            let val = trimmed.split(':').nth(1).unwrap_or("").trim();
+            if !val.is_empty() {
+                part_number = val.to_string();
+            }
+        }
+    }
+
+    let mfr_resolved = resolve_ram_manufacturer(
+        if manufacturer.is_empty() { "Apple" } else { &manufacturer },
+        &part_number,
+    );
+
+    if !mem_type.is_empty() || !speed.is_empty() {
+        Some(RamDetails {
+            memory_type: if mem_type.is_empty() { "Unified Memory".to_string() } else { mem_type },
+            speed_mhz: if speed.is_empty() { "N/A".to_string() } else { speed },
+            manufacturer: mfr_resolved,
+        })
+    } else {
+        Some(RamDetails {
+            memory_type: "Unified Memory".to_string(),
+            speed_mhz: "N/A".to_string(),
+            manufacturer: "Apple".to_string(),
+        })
+    }
 }
 
 fn detect_ram_details() -> RamDetails {
@@ -981,48 +1326,22 @@ fn detect_ram_details() -> RamDetails {
 
     #[cfg(target_os = "windows")]
     {
-        use std::process::Command;
-        if let Ok(output) = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "Get-CimInstance Win32_PhysicalMemory | Select-Object Manufacturer, Speed, SMBIOSMemoryType | Format-Table -HideTableHeaders"
-            ])
-            .output()
-            && output.status.success()
-        {
-            let text = String::from_utf8_lossy(&output.stdout);
-                for line in text.lines() {
-                    let trimmed = line.trim();
-                    if !trimmed.is_empty() {
-                        let parts: Vec<&str> = trimmed.split_whitespace().collect();
-                        if parts.len() >= 2 {
-                            let mfr = parts[0].to_string();
-                            let spd = format!("{} MHz", parts[1]);
-                            let smbios_code = parts.get(2).unwrap_or(&"0").parse::<u32>().unwrap_or(0);
-                            let mem_t = match smbios_code {
-                                24 => "DDR3",
-                                26 => "DDR4",
-                                30 => "LPDDR4",
-                                34 => "DDR5",
-                                35 => "LPDDR5",
-                                _ => "DDR RAM",
-                            };
-                            return RamDetails {
-                                memory_type: mem_t.to_string(),
-                                speed_mhz: spd,
-                                manufacturer: mfr,
-                            };
-                        }
-                    }
-                }
-            }
+        if let Some(details) = detect_ram_details_windows() {
+            return details;
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(details) = detect_ram_details_macos() {
+            return details;
+        }
+    }
 
     RamDetails {
         memory_type: "DDR RAM".to_string(),
         speed_mhz: "N/A".to_string(),
-        manufacturer: "Standard".to_string(),
+        manufacturer: "Standard RAM".to_string(),
     }
 }
 
@@ -2027,6 +2346,51 @@ mod tests {
         assert!(!ram.memory_type.is_empty());
         assert!(!ram.speed_mhz.is_empty());
         assert!(!ram.manufacturer.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_ram_manufacturer() {
+        // JEDEC Hex codes common in laptops
+        assert_eq!(resolve_ram_manufacturer("04CB", ""), "ADATA");
+        assert_eq!(resolve_ram_manufacturer("0198", ""), "Kingston");
+        assert_eq!(resolve_ram_manufacturer("80AD", ""), "SK Hynix");
+        assert_eq!(resolve_ram_manufacturer("802C", ""), "Micron");
+        assert_eq!(resolve_ram_manufacturer("80CE", ""), "Samsung");
+        assert_eq!(resolve_ram_manufacturer("059B", ""), "Crucial");
+        assert_eq!(resolve_ram_manufacturer("029E", ""), "Corsair");
+        assert_eq!(resolve_ram_manufacturer("04CD", ""), "G.Skill");
+
+        // Multi-word strings with spaces (previously broke with split_whitespace)
+        assert_eq!(resolve_ram_manufacturer("SK Hynix", ""), "SK Hynix");
+        assert_eq!(resolve_ram_manufacturer("Micron Technology", ""), "Micron");
+        assert_eq!(resolve_ram_manufacturer("Crucial Technology", ""), "Crucial");
+        assert_eq!(resolve_ram_manufacturer("Kingston Technology", ""), "Kingston");
+
+        // Fallback from Part Number when manufacturer is Unknown / generic / 0000
+        assert_eq!(resolve_ram_manufacturer("0000", "M471A1K43DB1-CWE"), "Samsung");
+        assert_eq!(resolve_ram_manufacturer("Unknown", "HMA81GS6DJR8N-XN"), "SK Hynix");
+        assert_eq!(resolve_ram_manufacturer("", "CT16G4SFRA32A"), "Crucial");
+        assert_eq!(resolve_ram_manufacturer("Manufacturer", "MTA8ATF1G64HZ-3G2R1"), "Micron");
+        assert_eq!(resolve_ram_manufacturer("0", "KVR32S22S8/8"), "Kingston");
+    }
+
+    #[test]
+    fn test_resolve_ram_type() {
+        // Direct SMBIOS codes (Laptop SODIMM vs Desktop DIMM)
+        assert_eq!(resolve_ram_type(26, 0, 12, 3200, "M471A1K43DB1"), "DDR4 SODIMM");
+        assert_eq!(resolve_ram_type(26, 0, 8, 3200, "M378A1K43BB1"), "DDR4");
+        assert_eq!(resolve_ram_type(34, 0, 12, 4800, "CT16G48C40S5"), "DDR5 SODIMM");
+        assert_eq!(resolve_ram_type(34, 0, 8, 5600, "CT16G56C46U5"), "DDR5");
+        assert_eq!(resolve_ram_type(30, 0, 0, 4266, ""), "LPDDR4");
+        assert_eq!(resolve_ram_type(35, 0, 0, 6400, ""), "LPDDR5");
+
+        // Heuristics when SMBIOS code is 0 (Typical in laptop BIOS)
+        assert_eq!(resolve_ram_type(0, 0, 12, 3200, ""), "DDR4 SODIMM");
+        assert_eq!(resolve_ram_type(0, 0, 12, 4800, ""), "DDR5 SODIMM");
+        assert_eq!(resolve_ram_type(0, 0, 12, 1600, ""), "DDR3 SODIMM");
+        assert_eq!(resolve_ram_type(0, 0, 0, 6400, ""), "LPDDR5");
+        assert_eq!(resolve_ram_type(0, 0, 12, 0, "SODIMM-DDR4-3200"), "DDR4 SODIMM");
+        assert_eq!(resolve_ram_type(0, 0, 0, 0, "LPDDR5-6400"), "LPDDR5");
     }
 
     #[test]
