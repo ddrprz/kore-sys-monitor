@@ -13,7 +13,7 @@
 - 🔍 **Búsqueda & Filtrado de Procesos**: Presiona `/` para filtrar procesos en tiempo real por nombre, PID o comando.
 - 📊 **Ordenamiento Interactivo**: Presiona `s` para cambiar la columna de ordenación (CPU, MEM, PID, Nombre) y `r` para invertir el orden.
 - ⚡ **Gestor de Procesos Integrado**: Modal interactivo de confirmación (`Del` / `K`) para terminar procesos (`SIGTERM`/`SIGKILL`).
-- 💾 **Almacenamiento Dedicado**: Pestaña dedicada `[3] Storage` con clasificación de medios (NVMe/SSD/HDD), telemetría S.M.A.R.T., porcentaje de salud y particiones montadas.
+- 💾 **Almacenamiento Dedicado & Archivos Temporales**: Pestaña dedicada `[3] Storage` con clasificación de medios (NVMe/SSD/HDD), telemetría S.M.A.R.T., porcentaje de salud, particiones montadas y análisis en tiempo real de archivos temporales y caché (`%TEMP%`, `Windows Temp`, `Prefetch`, `Crash Dumps`, etc.) en segundo plano.
 - 📶 **Red Simplificada & Speed Test**: Pestaña dedicada `[4] Network` con detección clara de **WiFi** o **Cable (Ethernet)**, nombre de la red (SSID), puerta de enlace (**Gateway**), gráficos de tráfico RX/TX y **Speed Test** interactivo (`e`).
 - 📈 **Detalle Extendido de CPU**: Pestaña dedicada `[5] CPU Detail` con desgloses por núcleo, métricas promedio/mínimas/máximas e historial Sparkline.
 - 🎮 **Telemetría Avanzada de GPU**: Pestaña dedicada `[6] GPU Detail` y resumen en Overview con soporte multi-proveedor (NVIDIA, AMD, Intel) para VRAM, clocks de núcleo/memoria, ventiladores, potencia (W), resolución/refresco y motores de cómputo/video.
@@ -35,7 +35,8 @@
 | `s` | Cambiar columna de ordenación (CPU% → MEM% → PID → Name). |
 | `r` | Invertir el sentido de ordenación (Ascendente / Descendente). |
 | `e` | Iniciar prueba de velocidad de red en tiempo real (**Speed Test**). |
-| `t` | Cambiar el tema visual dinámicamente. |
+| `t` (en Storage) | Re-escanear archivos temporales y caché del sistema en segundo plano. |
+| `c` / `t` | Cambiar el tema visual dinámicamente (Cyber Cyan, Catppuccin, Dracula, etc.). |
 | `Del` / `Delete` / `K` | Abrir modal de confirmación para terminar el proceso seleccionado. |
 | `?` | Abrir / Cerrar ventana modal de ayuda. |
 | `q` / `Ctrl+C` | Salir limpiamente de la aplicación. |

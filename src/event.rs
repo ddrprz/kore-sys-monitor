@@ -47,7 +47,14 @@ pub fn handle_events(app: &mut App, tick_rate: Duration) -> Result<()> {
                     }
                     (KeyCode::Char('s'), _) => app.cycle_sort(),
                     (KeyCode::Char('r'), _) => app.reverse_sort(),
-                    (KeyCode::Char('t'), _) => app.cycle_theme(),
+                    (KeyCode::Char('t'), _) | (KeyCode::Char('T'), _) => {
+                        if app.active_tab == crate::app::Tab::Storage {
+                            app.trigger_temp_files_scan();
+                        } else {
+                            app.cycle_theme();
+                        }
+                    }
+                    (KeyCode::Char('c'), _) | (KeyCode::Char('C'), _) => app.cycle_theme(),
                     (KeyCode::Char('e'), _) | (KeyCode::Char('E'), _) => app.trigger_speed_test(),
                     (KeyCode::Char('K'), _) | (KeyCode::Delete, _) => app.open_kill_modal(),
 
