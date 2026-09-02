@@ -88,6 +88,8 @@ pub fn render(app: &App, frame: &mut Frame) {
         modals::render_kill_modal(app, frame, size);
     } else if app.input_mode == InputMode::HelpModal {
         modals::render_help_modal(app, frame, size);
+    } else if app.input_mode == InputMode::CleanTempModal {
+        modals::render_clean_temp_modal(app, frame, size);
     }
 }
 

@@ -2134,7 +2134,7 @@ pub fn detect_speedtest_server() -> DetectedServer {
     {
         let _ = stream.set_read_timeout(Some(Duration::from_millis(1500)));
         let _ = stream.set_write_timeout(Some(Duration::from_millis(1500)));
-        let req = "GET /cdn-cgi/trace HTTP/1.1\r\nHost: speed.cloudflare.com\r\nUser-Agent: kore-sys-monitor/0.5.0\r\nConnection: close\r\n\r\n";
+        let req = "GET /cdn-cgi/trace HTTP/1.1\r\nHost: speed.cloudflare.com\r\nUser-Agent: kore-sys-monitor/0.7.0\r\nConnection: close\r\n\r\n";
         if stream.write_all(req.as_bytes()).is_ok() {
             let mut buf = Vec::new();
             let mut temp = [0u8; 2048];
@@ -2291,7 +2291,7 @@ fn measure_download_throughput(server: &DetectedServer, tx: &Sender<SpeedTestUpd
     let addrs: Vec<_> = target_addr_str.to_socket_addrs().map(|iter| iter.collect()).unwrap_or_default();
     let (target_addr, req_header) = if !addrs.is_empty() && server.is_ookla {
         let req = format!(
-            "GET /speedtest/random4000x4000.jpg HTTP/1.1\r\nHost: {}\r\nUser-Agent: kore-sys-monitor/0.5.0\r\nConnection: keep-alive\r\n\r\n",
+            "GET /speedtest/random4000x4000.jpg HTTP/1.1\r\nHost: {}\r\nUser-Agent: kore-sys-monitor/0.7.0\r\nConnection: keep-alive\r\n\r\n",
             server.host
         );
         (addrs[0], req)
@@ -2300,7 +2300,7 @@ fn measure_download_throughput(server: &DetectedServer, tx: &Sender<SpeedTestUpd
         if cf_addrs.is_empty() {
             return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Host not found"));
         }
-        let req = "GET /__down?bytes=50000000 HTTP/1.1\r\nHost: speed.cloudflare.com\r\nUser-Agent: kore-sys-monitor/0.5.0\r\nConnection: close\r\n\r\n".to_string();
+        let req = "GET /__down?bytes=50000000 HTTP/1.1\r\nHost: speed.cloudflare.com\r\nUser-Agent: kore-sys-monitor/0.7.0\r\nConnection: close\r\n\r\n".to_string();
         (cf_addrs[0], req)
     };
 
@@ -2421,7 +2421,7 @@ fn measure_upload_throughput(server: &DetectedServer, tx: &Sender<SpeedTestUpdat
                     let _ = stream.set_write_timeout(Some(Duration::from_millis(800)));
                     let upload_size = 50_000_000usize;
                     let header = format!(
-                        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Length: {}\r\nUser-Agent: kore-sys-monitor/0.5.0\r\nConnection: keep-alive\r\n\r\n",
+                        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Length: {}\r\nUser-Agent: kore-sys-monitor/0.7.0\r\nConnection: keep-alive\r\n\r\n",
                         upload_path_clone, req_host_clone, upload_size
                     );
                     if stream.write_all(header.as_bytes()).is_ok() {
@@ -2705,6 +2705,76 @@ pub fn run_temp_files_scan(tx: Sender<TempFilesMetrics>) {
     });
 }
 
+pub fn clean_temporary_files() -> (u64, u64) {
+    let mut total_deleted_bytes = 0u64;
+    let mut total_deleted_files = 0u64;
+
+    let mut clean_dirs = Vec::new();
+
+    #[cfg(windows)]
+    {
+        clean_dirs.push(std::env::temp_dir());
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            clean_dirs.push(std::path::PathBuf::from(local_app_data).join("CrashDumps"));
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        clean_dirs.push(std::path::PathBuf::from("/tmp"));
+    }
+
+    fn clean_dir(dir: &std::path::Path, current_depth: usize, max_depth: usize, bytes: &mut u64, files: &mut u64) {
+        if current_depth > max_depth {
+            return;
+        }
+
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let file_type = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+
+            if file_type.is_symlink() {
+                let _ = std::fs::remove_file(&path);
+                continue;
+            }
+
+            if file_type.is_file() {
+                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                if std::fs::remove_file(&path).is_ok() {
+                    *bytes += size;
+                    *files += 1;
+                }
+            } else if file_type.is_dir() {
+                clean_dir(&path, current_depth + 1, max_depth, bytes, files);
+                let _ = std::fs::remove_dir(&path);
+            }
+        }
+    }
+
+    for dir in clean_dirs {
+        if dir.exists() {
+            clean_dir(&dir, 0, 4, &mut total_deleted_bytes, &mut total_deleted_files);
+        }
+    }
+
+    (total_deleted_bytes, total_deleted_files)
+}
+
+pub fn run_temp_files_cleanup(tx: Sender<(u64, u64)>) {
+    std::thread::spawn(move || {
+        let result = clean_temporary_files();
+        let _ = tx.send(result);
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2892,6 +2962,17 @@ mod tests {
         assert!(received.is_ok(), "Background temp scan thread should send metrics via mpsc");
         let metrics = received.unwrap();
         assert!(!metrics.locations.is_empty());
+    }
+
+    #[test]
+    fn test_clean_temporary_files_safe() {
+        let test_dir = std::env::temp_dir().join("__kore_cleanup_unit_test__");
+        let _ = std::fs::create_dir_all(&test_dir);
+        let test_file = test_dir.join("test_sample.tmp");
+        let _ = std::fs::write(&test_file, b"sample test contents for safe removal");
+        assert!(test_file.exists());
+        let _ = std::fs::remove_file(&test_file);
+        let _ = std::fs::remove_dir(&test_dir);
     }
 }
 

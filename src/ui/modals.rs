@@ -90,8 +90,9 @@ pub fn render_help_modal(app: &App, frame: &mut Frame, area: Rect) {
         Line::from(vec![Span::styled(" s               ", Style::default().fg(theme.warning)), Span::raw(" Cambiar columna de ordenación (CPU/MEM/PID/Name)")]),
         Line::from(vec![Span::styled(" r               ", Style::default().fg(theme.warning)), Span::raw(" Invertir ordenación (Asc / Desc)")]),
         Line::from(vec![Span::styled(" e               ", Style::default().fg(theme.warning)), Span::raw(" Iniciar prueba de velocidad de red (Speed Test)")]),
-        Line::from(vec![Span::styled(" t (en Storage)  ", Style::default().fg(theme.warning)), Span::raw(" Re-escanear archivos temporales y caché")]),
-        Line::from(vec![Span::styled(" c / t           ", Style::default().fg(theme.warning)), Span::raw(" Cambiar tema dinámico de interfaz")]),
+        Line::from(vec![Span::styled(" u (en Storage)  ", Style::default().fg(theme.warning)), Span::raw(" Re-escanear archivos temporales y caché")]),
+        Line::from(vec![Span::styled(" c (en Storage)  ", Style::default().fg(theme.warning)), Span::raw(" Limpiar archivos temporales de forma segura")]),
+        Line::from(vec![Span::styled(" t               ", Style::default().fg(theme.warning)), Span::raw(" Cambiar tema dinámico de interfaz")]),
         Line::from(vec![Span::styled(" Del / K / Delete", Style::default().fg(theme.warning)), Span::raw(" Ventana modal para terminar proceso seleccionado")]),
         Line::from(vec![Span::styled(" ?               ", Style::default().fg(theme.warning)), Span::raw(" Abrir / Cerrar esta ventana de ayuda")]),
         Line::from(vec![Span::styled(" q / Ctrl+C      ", Style::default().fg(theme.warning)), Span::raw(" Salir de la aplicación limpiando terminal")]),
@@ -100,7 +101,7 @@ pub fn render_help_modal(app: &App, frame: &mut Frame, area: Rect) {
     ];
 
     let block = Block::default()
-        .title(Span::styled(" Ayuda - kore-sys-monitor ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)))
+        .title(Span::styled(" Ayuda - kore-sys-monitor v0.7.0 ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.primary));
@@ -110,3 +111,58 @@ pub fn render_help_modal(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(Clear, popup_area);
     frame.render_widget(paragraph, popup_area);
 }
+
+pub fn render_clean_temp_modal(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
+    let popup_area = centered_rect(58, 38, area);
+
+    let total_mb = app.temp_files.total_size_bytes as f64 / (1024.0 * 1024.0);
+    let total_gb = total_mb / 1024.0;
+    let size_str = if total_gb >= 1.0 {
+        format!("{:.2} GB", total_gb)
+    } else {
+        format!("{:.1} MB", total_mb)
+    };
+
+    let text = vec![
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            " ¿Deseas limpiar de forma segura los archivos temporales? ",
+            Style::default().fg(theme.warning).add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw("  Espacio analizado:  "),
+            Span::styled(size_str, Style::default().fg(theme.critical).add_modifier(Modifier::BOLD)),
+            Span::raw("  │  Archivos: "),
+            Span::styled(format!("{}", app.temp_files.total_file_count), Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "  * Se limpiará User Temp (%TEMP%) y Crash Dumps de forma no destructiva.",
+            Style::default().fg(theme.text_muted),
+        )]),
+        Line::from(vec![Span::styled(
+            "  * Los archivos actualmente bloqueados o en uso por el sistema se omitirán.",
+            Style::default().fg(theme.text_muted),
+        )]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" [ Y / Enter: Iniciar Limpieza ] ", Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
+            Span::raw("   "),
+            Span::styled(" [ N / Esc: Cancelar ] ", Style::default().fg(theme.text_muted)),
+        ]),
+    ];
+
+    let block = Block::default()
+        .title(Span::styled(" Limpieza Segura de Temporales ", Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .border_style(Style::default().fg(theme.warning));
+
+    let paragraph = Paragraph::new(text).alignment(Alignment::Center).block(block);
+
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(paragraph, popup_area);
+}
+

@@ -33,7 +33,7 @@
 | **FR-2** | **CPU Global & History** | Visualización en tiempo real del uso global de CPU (%) con gráfico histórico Sparkline. | Alta (MVP) |
 | **FR-3** | **CPU Per-Core** | Desglose por barras de carga individual para cada núcleo o hilo lógico de la CPU. | Media |
 | **FR-4** | **Memoria & Swap** | Medidores (Gauges) de RAM usada, disponible y Swap consumido con porcentajes. | Alta (MVP) |
-| **FR-5** | **Almacenamiento & Temporales** | Pestaña dedicada `[3] Storage` con particiones, salud SMART y sección de archivos temporales (%TEMP%, Windows Temp, Prefetch, etc.) con peso total y cantidad de archivos en segundo plano (`t`). | Alta (MVP) |
+| **FR-5** | **Almacenamiento, Temporales & Limpieza** | Pestaña dedicada `[3] Storage` con particiones, salud SMART, gráfico Donut/Pastel de cuotas y análisis/limpieza segura de temporales (`u` actualizar, `c` limpiar). | Alta (MVP) |
 | **FR-6** | **Red Simplificada & Speed Test**| Pestaña dedicada `[4] Network` con tipo de conexión (WiFi/Cable), Nombre de red (SSID), Gateway, IP y Speed Test (`e`). | Alta |
 | **FR-7** | **Tabla de Procesos** | Lista interactiva de procesos con PID, Usuario, Nombre, % CPU, % Memoria y Estado. | Alta (MVP) |
 | **FR-8** | **Filtro de Procesos** | Búsqueda dinámica en tiempo real al presionar `/` para filtrar por nombre o PID. | Alta |
