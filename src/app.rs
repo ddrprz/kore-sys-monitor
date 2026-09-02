@@ -1,4 +1,7 @@
-use crate::system::{ProcessInfo, SpeedTestResults, SpeedTestState, SpeedTestUpdate, SystemMetrics};
+use crate::system::{
+    run_temp_files_scan, ProcessInfo, SpeedTestResults, SpeedTestState, SpeedTestUpdate,
+    SystemMetrics, TempFilesMetrics,
+};
 use crate::theme::{Theme, ThemeVariant};
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -112,12 +115,14 @@ pub struct App {
     pub speed_test: SpeedTestResults,
     pub speed_test_rx: Option<std::sync::mpsc::Receiver<SpeedTestUpdate>>,
     pub speed_test_last_time: Option<std::time::Instant>,
+    pub temp_files: TempFilesMetrics,
+    pub temp_files_rx: Option<std::sync::mpsc::Receiver<TempFilesMetrics>>,
     pub should_quit: bool,
 }
 
 impl App {
     pub fn new() -> Self {
-        Self {
+        let mut app = Self {
             active_tab: Tab::Overview,
             metrics: SystemMetrics::new(60),
             selected_process_index: 0,
@@ -131,8 +136,12 @@ impl App {
             speed_test: SpeedTestResults::default(),
             speed_test_rx: None,
             speed_test_last_time: None,
+            temp_files: TempFilesMetrics::default(),
+            temp_files_rx: None,
             should_quit: false,
-        }
+        };
+        app.trigger_temp_files_scan();
+        app
     }
 
     pub fn cycle_theme(&mut self) {
@@ -164,6 +173,21 @@ impl App {
         std::thread::spawn(move || {
             crate::system::run_speed_test(tx);
         });
+    }
+
+    pub fn trigger_temp_files_scan(&mut self) {
+        if self.temp_files.is_scanning {
+            self.set_status("El análisis de archivos temporales ya está en progreso...".to_string());
+            return;
+        }
+
+        self.set_status("Analizando archivos temporales y caché del sistema...".to_string());
+        self.temp_files.is_scanning = true;
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.temp_files_rx = Some(rx);
+
+        run_temp_files_scan(tx);
     }
 
     pub fn update(&mut self, elapsed_secs: f64) {
@@ -224,6 +248,22 @@ impl App {
 
         if let Some(t) = self.speed_test_last_time {
             self.speed_test.last_tested_secs_ago = Some(t.elapsed().as_secs());
+        }
+
+        // Process Temporary Files async scan
+        let maybe_temp_metrics = self.temp_files_rx.as_ref().and_then(|rx| rx.try_recv().ok());
+        if let Some(metrics) = maybe_temp_metrics {
+            let count = metrics.total_file_count;
+            let mb = metrics.total_size_bytes as f64 / (1024.0 * 1024.0);
+            let gb = mb / 1024.0;
+            let size_str = if gb >= 1.0 {
+                format!("{:.2} GB", gb)
+            } else {
+                format!("{:.1} MB", mb)
+            };
+            self.temp_files = metrics;
+            self.temp_files_rx = None;
+            self.set_status(format!("Temporales analizados: {} archivos ({})", count, size_str));
         }
 
         // Clear status message after 3 seconds

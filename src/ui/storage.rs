@@ -12,6 +12,22 @@ fn format_bytes(bytes: u64) -> String {
     format!("{:.1} GB", gb)
 }
 
+fn format_file_size(bytes: u64) -> String {
+    let kb = bytes as f64 / 1024.0;
+    let mb = kb / 1024.0;
+    let gb = mb / 1024.0;
+
+    if gb >= 1.0 {
+        format!("{:.2} GB", gb)
+    } else if mb >= 1.0 {
+        format!("{:.1} MB", mb)
+    } else if kb >= 1.0 {
+        format!("{:.0} KB", kb)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
 fn format_gb_tb(gb: f64) -> String {
     if gb >= 1000.0 {
         format!("{:.1} TB", gb / 1024.0)
@@ -25,20 +41,22 @@ pub fn render_detail(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
-    if area.height >= 14 {
+    if area.height >= 22 {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Percentage(48),
-                Constraint::Percentage(52),
+                Constraint::Percentage(34),
+                Constraint::Percentage(32),
+                Constraint::Percentage(34),
             ])
             .split(area);
 
         render_mounts_table(app, frame, chunks[0]);
-        render_smart_table(app, frame, chunks[1]);
-    } else if area.width >= 110 {
+        render_temp_files_table(app, frame, chunks[1]);
+        render_smart_table(app, frame, chunks[2]);
+    } else if area.height >= 14 {
         let chunks = Layout::default()
-            .direction(Direction::Horizontal)
+            .direction(Direction::Vertical)
             .constraints([
                 Constraint::Percentage(50),
                 Constraint::Percentage(50),
@@ -46,11 +64,12 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             .split(area);
 
         render_mounts_table(app, frame, chunks[0]);
-        render_smart_table(app, frame, chunks[1]);
+        render_temp_files_table(app, frame, chunks[1]);
     } else {
-        render_mounts_table(app, frame, area);
+        render_temp_files_table(app, frame, area);
     }
 }
+
 
 
 
@@ -332,3 +351,148 @@ pub fn render_smart_table(app: &App, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(table, area);
 }
+
+pub fn render_temp_files_table(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
+    let is_wide = area.width >= 95;
+
+    let scan_indicator = if app.temp_files.is_scanning {
+        Span::styled(" [Escaneando... ⟳] ", Style::default().fg(theme.warning).add_modifier(Modifier::BOLD))
+    } else {
+        Span::styled(" [t] Actualizar ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))
+    };
+
+    let total_mb = app.temp_files.total_size_bytes as f64 / (1024.0 * 1024.0);
+    let total_str = format_file_size(app.temp_files.total_size_bytes);
+
+    let ago_str = app.temp_files.last_scan_time.map(|t| {
+        let secs = t.elapsed().as_secs();
+        if secs >= 60 {
+            format!(" │ hace {}m", secs / 60)
+        } else {
+            format!(" │ hace {}s", secs)
+        }
+    }).unwrap_or_default();
+
+    let summary_span = Span::styled(
+        format!(" Total: {} │ {} archivos{} ", total_str, app.temp_files.total_file_count, ago_str),
+        Style::default().fg(if total_mb >= 5000.0 { theme.critical } else if total_mb >= 1000.0 { theme.warning } else { theme.success }).add_modifier(Modifier::BOLD),
+    );
+
+    let title_line = Line::from(vec![
+        Span::styled(" Temporary Files & System Cache ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+        Span::raw("─"),
+        summary_span,
+        Span::raw("─"),
+        scan_indicator,
+    ]);
+
+    let block = Block::default()
+        .title(title_line)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.border_inactive));
+
+    if is_wide {
+        let header_cells = ["Location / Scope", "Path", "Files", "Size", "Status"]
+            .iter()
+            .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
+        let header = Row::new(header_cells).height(1);
+
+        let mut rows: Vec<Row> = app.temp_files.locations.iter().map(|loc| {
+            let status_color = if loc.is_accessible {
+                theme.success
+            } else if loc.status.contains("restringido") {
+                theme.warning
+            } else {
+                theme.text_muted
+            };
+
+            let size_color = if loc.size_bytes >= 3 * 1024 * 1024 * 1024 {
+                theme.critical
+            } else if loc.size_bytes >= 1024 * 1024 * 1024 {
+                theme.warning
+            } else {
+                theme.primary
+            };
+
+            Row::new(vec![
+                Cell::from(loc.name.clone()).style(Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD)),
+                Cell::from(loc.path.clone()).style(Style::default().fg(theme.text_muted)),
+                Cell::from(format!("{} items", loc.file_count)),
+                Cell::from(format_file_size(loc.size_bytes)).style(Style::default().fg(size_color).add_modifier(Modifier::BOLD)),
+                Cell::from(loc.status.clone()).style(Style::default().fg(status_color)),
+            ])
+        }).collect();
+
+        // Summary row at the bottom
+        if !app.temp_files.locations.is_empty() {
+            rows.push(Row::new(vec![
+                Cell::from("TOTAL ACUMULADO").style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+                Cell::from(format!("{} ubicaciones monitoreadas", app.temp_files.locations.len())).style(Style::default().fg(theme.text_muted)),
+                Cell::from(format!("{} archivos", app.temp_files.total_file_count)).style(Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD)),
+                Cell::from(format_file_size(app.temp_files.total_size_bytes)).style(Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
+                Cell::from("Listo").style(Style::default().fg(theme.success)),
+            ]).style(Style::default().add_modifier(Modifier::UNDERLINED)));
+        }
+
+        let table = Table::new(
+            rows,
+            [
+                Constraint::Length(24),
+                Constraint::Min(25),
+                Constraint::Length(14),
+                Constraint::Length(12),
+                Constraint::Length(14),
+            ],
+        )
+        .header(header)
+        .block(block);
+
+        frame.render_widget(table, area);
+    } else {
+        // Compact mode for narrower terminals
+        let header_cells = ["Location / Path", "Items / Size", "Status"]
+            .iter()
+            .map(|h| Cell::from(*h).style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)));
+        let header = Row::new(header_cells).height(1);
+
+        let rows = app.temp_files.locations.iter().map(|loc| {
+            let status_color = if loc.is_accessible {
+                theme.success
+            } else if loc.status.contains("restringido") {
+                theme.warning
+            } else {
+                theme.text_muted
+            };
+
+            let cell_loc = Cell::from(Text::from(vec![
+                Line::from(Span::styled(loc.name.clone(), Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD))),
+                Line::from(Span::styled(loc.path.clone(), Style::default().fg(theme.text_muted))),
+            ]));
+
+            let cell_stats = Cell::from(Text::from(vec![
+                Line::from(Span::styled(format_file_size(loc.size_bytes), Style::default().fg(theme.warning).add_modifier(Modifier::BOLD))),
+                Line::from(Span::raw(format!("{} items", loc.file_count))),
+            ]));
+
+            let cell_status = Cell::from(Span::styled(loc.status.clone(), Style::default().fg(status_color)));
+
+            Row::new(vec![cell_loc, cell_stats, cell_status]).height(2)
+        });
+
+        let table = Table::new(
+            rows,
+            [
+                Constraint::Min(20),
+                Constraint::Length(16),
+                Constraint::Length(14),
+            ],
+        )
+        .header(header)
+        .block(block);
+
+        frame.render_widget(table, area);
+    }
+}
+

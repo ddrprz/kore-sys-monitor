@@ -54,6 +54,25 @@ pub enum SpeedTestUpdate {
 }
 
 #[derive(Debug, Clone)]
+pub struct TempLocationInfo {
+    pub name: String,
+    pub path: String,
+    pub file_count: u64,
+    pub size_bytes: u64,
+    pub status: String,
+    pub is_accessible: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TempFilesMetrics {
+    pub locations: Vec<TempLocationInfo>,
+    pub total_size_bytes: u64,
+    pub total_file_count: u64,
+    pub is_scanning: bool,
+    pub last_scan_time: Option<Instant>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ProcessInfo {
     pub pid: u32,
     pub name: String,
@@ -2472,6 +2491,220 @@ fn measure_upload_throughput(server: &DetectedServer, tx: &Sender<SpeedTestUpdat
     Ok(mbps)
 }
 
+pub fn scan_temp_directory(path: &std::path::Path, max_depth: usize) -> (u64, u64, bool, String) {
+    if !path.exists() {
+        return (0, 0, false, "No encontrado".to_string());
+    }
+
+    let mut total_files: u64 = 0;
+    let mut total_bytes: u64 = 0;
+    let mut had_permission_denied = false;
+
+    fn walk(
+        dir: &std::path::Path,
+        current_depth: usize,
+        max_depth: usize,
+        files: &mut u64,
+        bytes: &mut u64,
+        denied: &mut bool,
+    ) {
+        if current_depth > max_depth {
+            return;
+        }
+
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    *denied = true;
+                }
+                return;
+            }
+        };
+
+        for entry in entries.flatten() {
+            let file_type = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+
+            // Avoid symlinks to prevent infinite loops or escaping outside the directory
+            if file_type.is_symlink() {
+                continue;
+            }
+
+            if file_type.is_file() {
+                *files += 1;
+                if let Ok(meta) = entry.metadata() {
+                    *bytes += meta.len();
+                }
+            } else if file_type.is_dir() {
+                walk(&entry.path(), current_depth + 1, max_depth, files, bytes, denied);
+            }
+        }
+    }
+
+    walk(path, 0, max_depth, &mut total_files, &mut total_bytes, &mut had_permission_denied);
+
+    let status = if had_permission_denied && total_files == 0 {
+        "Acceso denegado".to_string()
+    } else if had_permission_denied {
+        "Parcial (restringido)".to_string()
+    } else {
+        "Accesible".to_string()
+    };
+
+    let is_accessible = !had_permission_denied || total_files > 0;
+    (total_files, total_bytes, is_accessible, status)
+}
+
+pub fn scan_system_temp_files() -> TempFilesMetrics {
+    use std::path::PathBuf;
+
+    let mut locations = Vec::new();
+
+    #[cfg(windows)]
+    {
+        // 1. User Temp (%TEMP% / %TMP%)
+        let user_temp = std::env::temp_dir();
+        let (files, bytes, acc, status) = scan_temp_directory(&user_temp, 5);
+        locations.push(TempLocationInfo {
+            name: "User Temp (%TEMP%)".to_string(),
+            path: user_temp.to_string_lossy().to_string(),
+            file_count: files,
+            size_bytes: bytes,
+            status,
+            is_accessible: acc,
+        });
+
+        // 2. Windows Temp (C:\Windows\Temp)
+        let sys_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+        let win_temp = PathBuf::from(&sys_root).join("Temp");
+        let (files, bytes, acc, status) = scan_temp_directory(&win_temp, 5);
+        locations.push(TempLocationInfo {
+            name: "Windows Temp".to_string(),
+            path: win_temp.to_string_lossy().to_string(),
+            file_count: files,
+            size_bytes: bytes,
+            status,
+            is_accessible: acc,
+        });
+
+        // 3. Windows Prefetch (C:\Windows\Prefetch)
+        let win_prefetch = PathBuf::from(&sys_root).join("Prefetch");
+        let (files, bytes, acc, status) = scan_temp_directory(&win_prefetch, 2);
+        locations.push(TempLocationInfo {
+            name: "Windows Prefetch".to_string(),
+            path: win_prefetch.to_string_lossy().to_string(),
+            file_count: files,
+            size_bytes: bytes,
+            status,
+            is_accessible: acc,
+        });
+
+        // 4. Crash Dumps (%LOCALAPPDATA%\CrashDumps)
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            let crash_dumps = PathBuf::from(local_app_data).join("CrashDumps");
+            if crash_dumps.exists() {
+                let (files, bytes, acc, status) = scan_temp_directory(&crash_dumps, 3);
+                locations.push(TempLocationInfo {
+                    name: "Crash Dumps".to_string(),
+                    path: crash_dumps.to_string_lossy().to_string(),
+                    file_count: files,
+                    size_bytes: bytes,
+                    status,
+                    is_accessible: acc,
+                });
+            }
+        }
+
+        // 5. Windows Update Cache (SoftwareDistribution\Download)
+        let win_update_cache = PathBuf::from(&sys_root).join("SoftwareDistribution").join("Download");
+        if win_update_cache.exists() {
+            let (files, bytes, acc, status) = scan_temp_directory(&win_update_cache, 4);
+            locations.push(TempLocationInfo {
+                name: "Windows Update Cache".to_string(),
+                path: win_update_cache.to_string_lossy().to_string(),
+                file_count: files,
+                size_bytes: bytes,
+                status,
+                is_accessible: acc,
+            });
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        // 1. /tmp
+        let tmp_path = PathBuf::from("/tmp");
+        if tmp_path.exists() {
+            let (files, bytes, acc, status) = scan_temp_directory(&tmp_path, 4);
+            locations.push(TempLocationInfo {
+                name: "System Temp (/tmp)".to_string(),
+                path: tmp_path.to_string_lossy().to_string(),
+                file_count: files,
+                size_bytes: bytes,
+                status,
+                is_accessible: acc,
+            });
+        }
+
+        // 2. /var/tmp
+        let var_tmp = PathBuf::from("/var/tmp");
+        if var_tmp.exists() {
+            let (files, bytes, acc, status) = scan_temp_directory(&var_tmp, 4);
+            locations.push(TempLocationInfo {
+                name: "Var Temp (/var/tmp)".to_string(),
+                path: var_tmp.to_string_lossy().to_string(),
+                file_count: files,
+                size_bytes: bytes,
+                status,
+                is_accessible: acc,
+            });
+        }
+
+        // 3. User cache directory
+        if let Ok(home) = std::env::var("HOME") {
+            #[cfg(target_os = "macos")]
+            let cache_path = PathBuf::from(&home).join("Library").join("Caches");
+            #[cfg(not(target_os = "macos"))]
+            let cache_path = std::env::var("XDG_CACHE_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| PathBuf::from(&home).join(".cache"));
+
+            if cache_path.exists() {
+                let (files, bytes, acc, status) = scan_temp_directory(&cache_path, 4);
+                locations.push(TempLocationInfo {
+                    name: "User Cache".to_string(),
+                    path: cache_path.to_string_lossy().to_string(),
+                    file_count: files,
+                    size_bytes: bytes,
+                    status,
+                    is_accessible: acc,
+                });
+            }
+        }
+    }
+
+    let total_size_bytes: u64 = locations.iter().map(|l| l.size_bytes).sum();
+    let total_file_count: u64 = locations.iter().map(|l| l.file_count).sum();
+
+    TempFilesMetrics {
+        locations,
+        total_size_bytes,
+        total_file_count,
+        is_scanning: false,
+        last_scan_time: Some(Instant::now()),
+    }
+}
+
+pub fn run_temp_files_scan(tx: Sender<TempFilesMetrics>) {
+    std::thread::spawn(move || {
+        let metrics = scan_system_temp_files();
+        let _ = tx.send(metrics);
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2627,6 +2860,40 @@ mod tests {
             assert!(s.power_on_count > 0);
         }
     }
+
+    #[test]
+    fn test_scan_temp_directory_non_existent() {
+        let dummy_path = std::path::PathBuf::from("C:\\__non_existent_temp_directory_xyz__");
+        let (files, bytes, acc, status) = scan_temp_directory(&dummy_path, 2);
+        assert_eq!(files, 0);
+        assert_eq!(bytes, 0);
+        assert!(!acc);
+        assert_eq!(status, "No encontrado");
+    }
+
+    #[test]
+    fn test_scan_system_temp_files() {
+        let metrics = scan_system_temp_files();
+        assert!(!metrics.locations.is_empty(), "Should detect at least one temp directory");
+        assert!(!metrics.is_scanning);
+        assert!(metrics.last_scan_time.is_some());
+        for loc in &metrics.locations {
+            assert!(!loc.name.is_empty());
+            assert!(!loc.path.is_empty());
+            assert!(!loc.status.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_run_temp_files_scan_channel() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        run_temp_files_scan(tx);
+        let received = rx.recv_timeout(std::time::Duration::from_secs(10));
+        assert!(received.is_ok(), "Background temp scan thread should send metrics via mpsc");
+        let metrics = received.unwrap();
+        assert!(!metrics.locations.is_empty());
+    }
 }
+
 
 
