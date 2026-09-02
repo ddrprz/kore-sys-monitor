@@ -47,14 +47,17 @@ pub fn handle_events(app: &mut App, tick_rate: Duration) -> Result<()> {
                     }
                     (KeyCode::Char('s'), _) => app.cycle_sort(),
                     (KeyCode::Char('r'), _) => app.reverse_sort(),
-                    (KeyCode::Char('t'), _) | (KeyCode::Char('T'), _) => {
+                    (KeyCode::Char('t'), _) | (KeyCode::Char('T'), _) => app.cycle_theme(),
+                    (KeyCode::Char('u'), _) | (KeyCode::Char('U'), _) => {
                         if app.active_tab == crate::app::Tab::Storage {
                             app.trigger_temp_files_scan();
-                        } else {
-                            app.cycle_theme();
                         }
                     }
-                    (KeyCode::Char('c'), _) | (KeyCode::Char('C'), _) => app.cycle_theme(),
+                    (KeyCode::Char('c'), _) | (KeyCode::Char('C'), _) | (KeyCode::Char('l'), _) | (KeyCode::Char('L'), _) => {
+                        if app.active_tab == crate::app::Tab::Storage {
+                            app.open_clean_temp_modal();
+                        }
+                    }
                     (KeyCode::Char('e'), _) | (KeyCode::Char('E'), _) => app.trigger_speed_test(),
                     (KeyCode::Char('K'), _) | (KeyCode::Delete, _) => app.open_kill_modal(),
 
@@ -91,6 +94,16 @@ pub fn handle_events(app: &mut App, tick_rate: Duration) -> Result<()> {
                 InputMode::HelpModal => match key.code {
                     KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
                         app.input_mode = InputMode::Normal;
+                    }
+                    _ => {}
+                },
+
+                InputMode::CleanTempModal => match key.code {
+                    KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                        app.confirm_clean_temp();
+                    }
+                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                        app.cancel_modal();
                     }
                     _ => {}
                 },

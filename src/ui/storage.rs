@@ -1,9 +1,9 @@
 use crate::app::App;
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Cell, Row, Table},
+    widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table},
     Frame,
 };
 
@@ -353,13 +353,153 @@ pub fn render_smart_table(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 pub fn render_temp_files_table(app: &App, frame: &mut Frame, area: Rect) {
+    if area.width >= 110 && area.height >= 8 {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(35),
+                Constraint::Min(65),
+            ])
+            .split(area);
+
+        render_temp_donut_chart(app, frame, chunks[0]);
+        render_temp_details_table(app, frame, chunks[1]);
+    } else {
+        render_temp_details_table(app, frame, area);
+    }
+}
+
+fn render_temp_donut_chart(app: &App, frame: &mut Frame, area: Rect) {
     let theme = &app.theme;
-    let is_wide = area.width >= 95;
+    let total_bytes = app.temp_files.total_size_bytes;
+
+    let block = Block::default()
+        .title(Span::styled(" Space Share (Donut) ", Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD)))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.border_inactive));
+
+    let inner_area = block.inner(area);
+    frame.render_widget(block, area);
+
+    if inner_area.height < 5 || inner_area.width < 12 {
+        return;
+    }
+
+    let slice_colors = [
+        theme.primary,
+        theme.secondary,
+        theme.warning,
+        theme.success,
+        theme.critical,
+    ];
+    let slice_symbols = ["●", "▲", "■", "◆", "★"];
+
+    let active_locs: Vec<_> = app.temp_files.locations.iter().filter(|l| l.size_bytes > 0).collect();
+
+    let legend_lines_count = active_locs.len().min(4) as u16;
+    let donut_height = inner_area.height.saturating_sub(legend_lines_count + 1).max(3);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(donut_height),
+            Constraint::Min(legend_lines_count),
+        ])
+        .split(inner_area);
+
+    // 1. Render Donut in top sub-chunk
+    let donut_area = chunks[0];
+    let h = donut_area.height as i32;
+    let w = donut_area.width as i32;
+    let center_y = h / 2;
+    let center_x = w / 2;
+    let radius_outer = (center_y as f64).min(center_x as f64 / 2.0).max(1.2);
+    let radius_inner = (radius_outer * 0.40).max(0.6);
+
+    let mut cumulative_angles = Vec::new();
+    let mut acc = 0.0;
+    if total_bytes > 0 {
+        for loc in &active_locs {
+            let frac = loc.size_bytes as f64 / total_bytes as f64;
+            acc += frac * 2.0 * std::f64::consts::PI;
+            cumulative_angles.push(acc);
+        }
+    }
+
+    let mut lines = Vec::new();
+    for y in 0..h {
+        let mut spans = Vec::new();
+        for x in 0..w {
+            let dy = (y - center_y) as f64;
+            let dx = (x - center_x) as f64 * 0.50; // Aspect ratio adjustment
+            let dist = (dx * dx + dy * dy).sqrt();
+
+            if dist >= radius_inner && dist <= radius_outer && total_bytes > 0 {
+                let mut angle = dy.atan2(dx);
+                if angle < 0.0 {
+                    angle += 2.0 * std::f64::consts::PI;
+                }
+
+                let mut color = theme.primary;
+                for (idx, &cum_angle) in cumulative_angles.iter().enumerate() {
+                    if angle <= cum_angle {
+                        color = slice_colors[idx % slice_colors.len()];
+                        break;
+                    }
+                }
+                spans.push(Span::styled("█", Style::default().fg(color)));
+            } else if dist < radius_inner && y == center_y && x == center_x {
+                spans.push(Span::styled("•", Style::default().fg(theme.text_muted)));
+            } else {
+                spans.push(Span::raw(" "));
+            }
+        }
+        lines.push(Line::from(spans));
+    }
+
+    let donut_p = Paragraph::new(lines).alignment(Alignment::Center);
+    frame.render_widget(donut_p, donut_area);
+
+    // 2. Render Legend in bottom sub-chunk
+    if chunks.len() > 1 && chunks[1].height > 0 {
+        let mut legend_lines = Vec::new();
+        for (idx, loc) in active_locs.iter().take(chunks[1].height as usize).enumerate() {
+            let color = slice_colors[idx % slice_colors.len()];
+            let sym = slice_symbols[idx % slice_symbols.len()];
+            let pct = if total_bytes > 0 {
+                (loc.size_bytes as f64 / total_bytes as f64) * 100.0
+            } else {
+                0.0
+            };
+            let short_name = match loc.name.as_str() {
+                s if s.contains("User Temp") => "User %TEMP%",
+                s if s.contains("Windows Temp") => "Win Temp",
+                s if s.contains("Prefetch") => "Prefetch",
+                s if s.contains("Crash") => "CrashDumps",
+                s if s.contains("Update") => "UpdateCache",
+                other => other,
+            };
+            legend_lines.push(Line::from(vec![
+                Span::styled(format!("{} ", sym), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("{:<10}", short_name), Style::default().fg(theme.primary)),
+                Span::styled(format!("{:>5.1}% ", pct), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("({})", format_file_size(loc.size_bytes)), Style::default().fg(theme.text_muted)),
+            ]));
+        }
+        let legend_p = Paragraph::new(legend_lines);
+        frame.render_widget(legend_p, chunks[1]);
+    }
+}
+
+pub fn render_temp_details_table(app: &App, frame: &mut Frame, area: Rect) {
+    let theme = &app.theme;
+    let is_wide = area.width >= 90;
 
     let scan_indicator = if app.temp_files.is_scanning {
         Span::styled(" [Escaneando... ⟳] ", Style::default().fg(theme.warning).add_modifier(Modifier::BOLD))
     } else {
-        Span::styled(" [t] Actualizar ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))
+        Span::styled(" [u] Actualizar │ [c] Limpiar ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))
     };
 
     let total_mb = app.temp_files.total_size_bytes as f64 / (1024.0 * 1024.0);
@@ -429,7 +569,7 @@ pub fn render_temp_files_table(app: &App, frame: &mut Frame, area: Rect) {
         if !app.temp_files.locations.is_empty() {
             rows.push(Row::new(vec![
                 Cell::from("TOTAL ACUMULADO").style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
-                Cell::from(format!("{} ubicaciones monitoreadas", app.temp_files.locations.len())).style(Style::default().fg(theme.text_muted)),
+                Cell::from(format!("{} ubicaciones", app.temp_files.locations.len())).style(Style::default().fg(theme.text_muted)),
                 Cell::from(format!("{} archivos", app.temp_files.total_file_count)).style(Style::default().fg(theme.secondary).add_modifier(Modifier::BOLD)),
                 Cell::from(format_file_size(app.temp_files.total_size_bytes)).style(Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
                 Cell::from("Listo").style(Style::default().fg(theme.success)),
@@ -439,9 +579,9 @@ pub fn render_temp_files_table(app: &App, frame: &mut Frame, area: Rect) {
         let table = Table::new(
             rows,
             [
-                Constraint::Length(24),
-                Constraint::Min(25),
-                Constraint::Length(14),
+                Constraint::Length(22),
+                Constraint::Min(20),
+                Constraint::Length(12),
                 Constraint::Length(12),
                 Constraint::Length(14),
             ],
@@ -484,7 +624,7 @@ pub fn render_temp_files_table(app: &App, frame: &mut Frame, area: Rect) {
         let table = Table::new(
             rows,
             [
-                Constraint::Min(20),
+                Constraint::Min(18),
                 Constraint::Length(16),
                 Constraint::Length(14),
             ],
@@ -495,4 +635,5 @@ pub fn render_temp_files_table(app: &App, frame: &mut Frame, area: Rect) {
         frame.render_widget(table, area);
     }
 }
+
 

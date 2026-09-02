@@ -1,6 +1,6 @@
 use crate::system::{
-    run_temp_files_scan, ProcessInfo, SpeedTestResults, SpeedTestState, SpeedTestUpdate,
-    SystemMetrics, TempFilesMetrics,
+    run_temp_files_cleanup, run_temp_files_scan, ProcessInfo, SpeedTestResults, SpeedTestState,
+    SpeedTestUpdate, SystemMetrics, TempFilesMetrics,
 };
 use crate::theme::{Theme, ThemeVariant};
 
@@ -99,6 +99,7 @@ pub enum InputMode {
     Searching,
     KillModal,
     HelpModal,
+    CleanTempModal,
 }
 
 pub struct App {
@@ -117,6 +118,7 @@ pub struct App {
     pub speed_test_last_time: Option<std::time::Instant>,
     pub temp_files: TempFilesMetrics,
     pub temp_files_rx: Option<std::sync::mpsc::Receiver<TempFilesMetrics>>,
+    pub temp_clean_rx: Option<std::sync::mpsc::Receiver<(u64, u64)>>,
     pub should_quit: bool,
 }
 
@@ -138,6 +140,7 @@ impl App {
             speed_test_last_time: None,
             temp_files: TempFilesMetrics::default(),
             temp_files_rx: None,
+            temp_clean_rx: None,
             should_quit: false,
         };
         app.trigger_temp_files_scan();
@@ -266,6 +269,21 @@ impl App {
             self.set_status(format!("Temporales analizados: {} archivos ({})", count, size_str));
         }
 
+        // Process Temporary Files cleanup
+        let maybe_clean_result = self.temp_clean_rx.as_ref().and_then(|rx| rx.try_recv().ok());
+        if let Some((bytes_freed, files_freed)) = maybe_clean_result {
+            self.temp_clean_rx = None;
+            let mb = bytes_freed as f64 / (1024.0 * 1024.0);
+            let gb = mb / 1024.0;
+            let freed_str = if gb >= 1.0 {
+                format!("{:.2} GB", gb)
+            } else {
+                format!("{:.1} MB", mb)
+            };
+            self.set_status(format!("✓ Limpieza completada: liberados {} ({} archivos)", freed_str, files_freed));
+            self.trigger_temp_files_scan();
+        }
+
         // Clear status message after 3 seconds
         if let Some((_, time)) = &self.status_message
             && time.elapsed().as_secs() >= 3 {
@@ -374,6 +392,23 @@ impl App {
             }
         }
         self.input_mode = InputMode::Normal;
+    }
+
+    pub fn open_clean_temp_modal(&mut self) {
+        self.input_mode = InputMode::CleanTempModal;
+    }
+
+    pub fn confirm_clean_temp(&mut self) {
+        self.input_mode = InputMode::Normal;
+        if self.temp_clean_rx.is_some() {
+            self.set_status("La limpieza de archivos temporales ya se encuentra en ejecución...".to_string());
+            return;
+        }
+
+        self.set_status("Iniciando limpieza segura de archivos temporales...".to_string());
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.temp_clean_rx = Some(rx);
+        run_temp_files_cleanup(tx);
     }
 
     pub fn cancel_modal(&mut self) {
