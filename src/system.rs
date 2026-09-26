@@ -422,11 +422,22 @@ impl SystemMetrics {
                     })
                 });
 
-            let sysinfo_ips: Vec<String> = network
+            let mut sysinfo_ips: Vec<String> = network
                 .ip_networks()
                 .iter()
                 .map(|ip_net| ip_net.addr.to_string())
                 .collect();
+
+            // Prioritize valid IPv4 addresses first, then non-link-local IPv6, then link-local IPv6
+            sysinfo_ips.sort_by_key(|ip| {
+                if ip.contains('.') && !ip.starts_with("127.") {
+                    0
+                } else if !ip.starts_with("fe80:") && !ip.starts_with("::1") {
+                    1
+                } else {
+                    2
+                }
+            });
 
             let ip_address = cached_cfg
                 .map(|c| c.ip_address.clone())
@@ -441,7 +452,16 @@ impl SystemMetrics {
 
             let gateway = cached_cfg
                 .map(|c| c.gateway.clone())
-                .filter(|gw| !gw.is_empty())
+                .filter(|gw| !gw.is_empty() && gw != "-")
+                .or_else(|| {
+                    #[cfg(target_os = "linux")]
+                    {
+                        let gws = detect_linux_gateways();
+                        gws.get(iface_name).cloned().or_else(|| gws.get("default").cloned())
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    None
+                })
                 .unwrap_or_else(|| "-".to_string());
 
             let dns_servers = cached_cfg
@@ -451,8 +471,26 @@ impl SystemMetrics {
 
             let network_name = cached_cfg
                 .map(|c| c.network_name.clone())
-                .filter(|n| !n.is_empty())
-                .unwrap_or_else(|| "-".to_string());
+                .filter(|n| !n.is_empty() && n != "-" && n != "Red Wi-Fi")
+                .or_else(|| {
+                    #[cfg(target_os = "linux")]
+                    {
+                        if iface_name.starts_with("wl") {
+                            detect_linux_wifi_ssid(Some(iface_name))
+                        } else {
+                            None
+                        }
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    None
+                })
+                .unwrap_or_else(|| {
+                    if iface_name.starts_with("wl") {
+                        "Red Wi-Fi".to_string()
+                    } else {
+                        "-".to_string()
+                    }
+                });
 
             let medium = cached_cfg
                 .map(|c| c.medium)
@@ -538,10 +576,28 @@ impl SystemMetrics {
                 let first_ip = if iface.ip_address.is_empty() || iface.ip_address == "-" {
                     "No IP".to_string()
                 } else {
-                    iface.ip_address.split(',').next().unwrap_or("No IP").trim().to_string()
+                    let ips: Vec<&str> = iface.ip_address.split(',').map(|s| s.trim()).collect();
+                    ips.iter()
+                        .find(|&&ip| ip.contains('.') && !ip.starts_with("127."))
+                        .or_else(|| ips.iter().find(|&&ip| !ip.starts_with("fe80:") && !ip.starts_with("::1") && ip != "No IP"))
+                        .unwrap_or(&ips[0])
+                        .to_string()
                 };
-                let net_name = if iface.network_name.is_empty() || iface.network_name == "-" {
-                    if iface.medium == ConnectionMedium::WiFi {
+                let net_name = if iface.network_name.is_empty() || iface.network_name == "-" || iface.network_name == "Red Wi-Fi" {
+                    #[cfg(target_os = "linux")]
+                    let live_ssid = if iface.medium == ConnectionMedium::WiFi || iface.name.starts_with("wl") {
+                        detect_linux_wifi_ssid(Some(&iface.name))
+                    } else {
+                        None
+                    };
+                    #[cfg(not(target_os = "linux"))]
+                    let live_ssid: Option<String> = None;
+
+                    if let Some(ssid) = live_ssid {
+                        ssid
+                    } else if iface.network_name != "-" && !iface.network_name.is_empty() {
+                        iface.network_name.clone()
+                    } else if iface.medium == ConnectionMedium::WiFi {
                         "Red Wi-Fi".to_string()
                     } else if iface.medium == ConnectionMedium::Cable {
                         "Red Cableada".to_string()
@@ -552,6 +608,12 @@ impl SystemMetrics {
                     iface.network_name.clone()
                 };
                 let gw = if iface.gateway.is_empty() || iface.gateway == "-" {
+                    #[cfg(target_os = "linux")]
+                    {
+                        let gws = detect_linux_gateways();
+                        gws.get(&iface.name).cloned().or_else(|| gws.get("default").cloned()).unwrap_or_else(|| "N/A".to_string())
+                    }
+                    #[cfg(not(target_os = "linux"))]
                     "N/A".to_string()
                 } else {
                     iface.gateway.clone()
@@ -1889,6 +1951,152 @@ fn resolve_disk_info(disk: &sysinfo::Disk, physical_disks: &[(String, String, St
     }
 }
 
+#[cfg(target_os = "linux")]
+fn detect_linux_gateways() -> std::collections::HashMap<String, String> {
+    use std::fs;
+    use std::process::Command;
+    let mut gateways = std::collections::HashMap::new();
+
+    // 1. Read /proc/net/route (standard Linux routing table, fast, no process spawning)
+    if let Ok(content) = fs::read_to_string("/proc/net/route") {
+        for line in content.lines().skip(1) {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 4 {
+                let iface = parts[0].to_string();
+                let dest = parts[1];
+                let gw_hex = parts[2];
+                let flags_hex = parts[3];
+
+                let flags = u32::from_str_radix(flags_hex, 16).unwrap_or(0);
+                let is_gateway = (flags & 0x02) != 0 || dest == "00000000";
+
+                if is_gateway
+                    && gw_hex != "00000000"
+                    && let Ok(val) = u32::from_str_radix(gw_hex, 16)
+                {
+                    let ip = format!(
+                        "{}.{}.{}.{}",
+                        val & 0xFF,
+                        (val >> 8) & 0xFF,
+                        (val >> 16) & 0xFF,
+                        (val >> 24) & 0xFF
+                    );
+                    gateways.entry(iface.clone()).or_insert(ip.clone());
+                    gateways.entry("default".to_string()).or_insert(ip);
+                }
+            }
+        }
+    }
+
+    // 2. Fallback to `ip route show default` (handles IPv6 or alternative routing tables)
+    if !gateways.contains_key("default")
+        && let Ok(output) = Command::new("ip").args(["route", "show", "default"]).output()
+        && output.status.success()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if let Some(pos) = parts.iter().position(|&p| p == "via")
+                && let Some(gw_ip) = parts.get(pos + 1)
+            {
+                let dev = parts
+                    .iter()
+                    .position(|&p| p == "dev")
+                    .and_then(|p| parts.get(p + 1))
+                    .map(|s| s.to_string());
+                if let Some(d) = dev {
+                    gateways.entry(d).or_insert(gw_ip.to_string());
+                }
+                gateways.entry("default".to_string()).or_insert(gw_ip.to_string());
+            }
+        }
+    }
+
+    gateways
+}
+
+#[cfg(target_os = "linux")]
+fn detect_linux_wifi_ssid(iface: Option<&str>) -> Option<String> {
+    use std::process::Command;
+
+    // Priority 1: `iw dev <iface> link` or `iw dev`
+    if let Some(dev) = iface
+        && let Ok(output) = Command::new("iw").args(["dev", dev, "link"]).output()
+        && output.status.success()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if let Some(stripped) = trimmed.strip_prefix("SSID: ") {
+                let ssid = stripped.trim();
+                if !ssid.is_empty() {
+                    return Some(ssid.to_string());
+                }
+            }
+        }
+    }
+
+    if let Ok(output) = Command::new("iw").arg("dev").output()
+        && output.status.success()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if let Some(stripped) = trimmed.strip_prefix("ssid ") {
+                let ssid = stripped.trim();
+                if !ssid.is_empty() {
+                    return Some(ssid.to_string());
+                }
+            }
+        }
+    }
+
+    // Priority 2: `nmcli -t -f active,ssid dev wifi` (NetworkManager standard)
+    if let Ok(output) = Command::new("nmcli").args(["-t", "-f", "active,ssid", "dev", "wifi"]).output()
+        && output.status.success()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if let Some(stripped) = trimmed.strip_prefix("yes:") {
+                let ssid = stripped.trim();
+                if !ssid.is_empty() {
+                    return Some(ssid.to_string());
+                }
+            }
+        }
+    }
+
+    // Priority 3: legacy `iwgetid -r`
+    if let Ok(output) = Command::new("iwgetid").arg("-r").output()
+        && output.status.success()
+    {
+        let ssid = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !ssid.is_empty() {
+            return Some(ssid);
+        }
+    }
+
+    // Priority 4: `wpa_cli status`
+    if let Ok(output) = Command::new("wpa_cli").arg("status").output()
+        && output.status.success()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if let Some(stripped) = trimmed.strip_prefix("ssid=") {
+                let ssid = stripped.trim();
+                if !ssid.is_empty() {
+                    return Some(ssid.to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[allow(dead_code)]
 fn detect_network_adapter_details() -> std::collections::HashMap<String, NetworkAdapterConfig> {
     let mut map = std::collections::HashMap::new();
 
@@ -1964,7 +2172,6 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
     #[cfg(target_os = "linux")]
     {
         use std::fs;
-        use std::process::Command;
         let mut dns_servers = Vec::new();
         if let Ok(resolv) = fs::read_to_string("/etc/resolv.conf") {
             for line in resolv.lines() {
@@ -1977,10 +2184,7 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
             }
         }
         let dns_str = dns_servers.join(", ");
-
-        let wifi_ssid = Command::new("iwgetid").arg("-r").output().ok()
-            .and_then(|o| if o.status.success() { Some(String::from_utf8_lossy(&o.stdout).trim().to_string()) } else { None })
-            .filter(|s| !s.is_empty());
+        let linux_gateways = detect_linux_gateways();
 
         if let Ok(entries) = fs::read_dir("/sys/class/net") {
             for entry in entries.flatten() {
@@ -1998,10 +2202,17 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
                 };
 
                 let net_name = if is_wireless {
-                    wifi_ssid.clone().unwrap_or_else(|| "Red Wi-Fi".to_string())
+                    detect_linux_wifi_ssid(Some(&iface_name))
+                        .unwrap_or_else(|| "Red Wi-Fi".to_string())
                 } else {
                     "Red Cableada".to_string()
                 };
+
+                let gw = linux_gateways
+                    .get(&iface_name)
+                    .cloned()
+                    .or_else(|| linux_gateways.get("default").cloned())
+                    .unwrap_or_default();
 
                 let vendor_path = entry.path().join("device/vendor");
                 let device_path = entry.path().join("device/device");
@@ -2018,7 +2229,7 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
                         name: iface_name,
                         model: model_desc,
                         ip_address: String::new(),
-                        gateway: String::new(),
+                        gateway: gw,
                         dns_servers: dns_str.clone(),
                         network_name: net_name,
                         medium,
@@ -2048,6 +2259,24 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
                 None
             });
 
+        let macos_gateway = Command::new("route")
+            .args(["-n", "get", "default"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    let text = String::from_utf8_lossy(&o.stdout);
+                    for line in text.lines() {
+                        let trimmed = line.trim();
+                        if trimmed.starts_with("gateway: ") {
+                            return Some(trimmed[9..].trim().to_string());
+                        }
+                    }
+                }
+                None
+            })
+            .unwrap_or_default();
+
         let (net_name, medium) = if let Some(ssid) = wifi_ssid {
             (ssid, ConnectionMedium::WiFi)
         } else {
@@ -2060,7 +2289,7 @@ fn detect_network_adapter_details() -> std::collections::HashMap<String, Network
                 name: "en0".to_string(),
                 model: "Primary Network Adapter (en0)".to_string(),
                 ip_address: String::new(),
-                gateway: String::new(),
+                gateway: macos_gateway,
                 dns_servers: String::new(),
                 network_name: net_name,
                 medium,
@@ -3116,6 +3345,22 @@ mod tests {
         assert!(test_file.exists());
         let _ = std::fs::remove_file(&test_file);
         let _ = std::fs::remove_dir(&test_dir);
+    }
+
+    #[test]
+    fn test_detect_network_adapter_details() {
+        let adapters = detect_network_adapter_details();
+        // On systems with network interfaces, adapters should be populated
+        for (name, info) in &adapters {
+            assert!(!name.is_empty());
+            assert!(!info.name.is_empty());
+        }
+
+        let metrics = SystemMetrics::new(30);
+        if !metrics.primary_ip.is_empty() && metrics.primary_ip != "-" {
+            // Should not be a link-local IPv6 if IPv4 is available
+            assert!(!metrics.primary_ip.starts_with("fe80:"), "Should prioritize IPv4 over link-local IPv6: {}", metrics.primary_ip);
+        }
     }
 }
 
