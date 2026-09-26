@@ -41,9 +41,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .constraints([
             Constraint::Length(2), // RAM Gauge
             Constraint::Length(2), // Swap Gauge
-            Constraint::Min(1),    // Hardware details line
+            Constraint::Min(2),    // Hardware details line
         ])
-        .margin(1)
+        .horizontal_margin(1)
         .split(inner);
 
     // RAM Gauge
@@ -108,7 +108,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 
     // Hardware RAM spec detail line
     if chunks.len() > 2 && chunks[2].height > 0 {
-        let text = if chunks[2].width < 45 {
+        let text = if chunks[2].height >= 2 && chunks[2].width < 45 {
             vec![
                 Line::from(vec![
                     Span::styled("Spec: ", Style::default().fg(theme.text_muted)),
@@ -131,7 +131,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
                     ),
                 ]),
             ]
-        } else {
+        } else if chunks[2].width >= 45 {
             vec![Line::from(vec![
                 Span::styled("RAM Spec: ", Style::default().fg(theme.text_muted)),
                 Span::styled(
@@ -146,6 +146,24 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
                 ),
                 Span::styled(" │ ", Style::default().fg(theme.text_muted)),
                 Span::raw("Vendor: "),
+                Span::styled(
+                    &app.metrics.ram_details.manufacturer,
+                    Style::default().fg(theme.warning),
+                ),
+            ])]
+        } else {
+            // Ultra-compact single line (height == 1 and narrow width)
+            vec![Line::from(vec![
+                Span::styled(
+                    &app.metrics.ram_details.memory_type,
+                    Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+                Span::styled(
+                    &app.metrics.ram_details.speed_mhz,
+                    Style::default().fg(theme.secondary),
+                ),
+                Span::styled(" │ ", Style::default().fg(theme.text_muted)),
                 Span::styled(
                     &app.metrics.ram_details.manufacturer,
                     Style::default().fg(theme.warning),
